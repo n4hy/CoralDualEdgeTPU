@@ -1,0 +1,19 @@
+# Coral Edge TPU dependencies
+# Install pycoral following: https://coral.ai/docs/accelerator/get-started/
+
+pycoral>=2.0.0
+tflite-runtime>=2.5.0
+numpy>=1.19.0
+Pillow>=8.0.0
+
+# Camera and video processing
+opencv-python>=4.5.0
+
+# MQTT publishing
+paho-mqtt>=1.6.0
+
+# Webhook publishing
+requests>=2.25.0
+
+# Optional: ONVIF camera discovery
+# onvif-zeep>=0.2.12

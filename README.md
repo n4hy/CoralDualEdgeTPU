@@ -1,6 +1,373 @@
-This repository will contain code for utilitzation of Dual Edge CoralTPU connect via PCIe one lane to an ARM SBC. Inference will be done for sensor systems yield classification of pbject and tracking of objects
+# Dual Coral Edge TPU on ARM SBC
 
-Dr Robert McGwier, PhD
-Science Bob McGwoer
-Bob McGwer, N4HY
+High-performance dual Google Coral Edge TPU inference framework for ARM single-board computers. Achieves **216+ inferences/second** with two PCIe TPUs running in parallel.
 
+## Performance Results
+
+Tested on **Orange Pi 6 Plus** (CIX P1 CD8160 ARM SoC) with dual Coral Edge TPU M.2 accelerators.
+
+### Benchmark Summary
+
+| Configuration | Throughput | Latency (mean) | Latency (p99) |
+|--------------|------------|----------------|---------------|
+| Single TPU | 112.4 inf/s | 8.83 ms | 11.53 ms |
+| Dual TPU (parallel) | **216.2 inf/s** | 9.20 ms | 12.68 ms |
+| Dual TPU (alternating) | 110.9 inf/s | 8.95 ms | 11.53 ms |
+
+### 5-Minute Stress Test
+
+```
+Duration:        300 seconds
+Total Inferences: 62,514
+Throughput:      205-223 inf/sec (sustained)
+Temperature:     43°C (constant, no throttling)
+```
+
+### Scaling Efficiency
+
+| Metric | Single TPU | Dual TPU | Scaling |
+|--------|-----------|----------|---------|
+| Throughput | 112 inf/s | 216 inf/s | **1.93x** |
+| Latency p50 | 8.84 ms | 9.06 ms | +2.5% |
+| Latency p99 | 11.53 ms | 12.68 ms | +10% |
+
+Near-linear scaling with minimal latency increase demonstrates efficient PCIe bus utilization.
+
+## Hardware
+
+### Tested Configuration
+
+- **SBC**: Orange Pi 6 Plus
+- **CPU**: CIX P1 CD8160 (ARM64)
+- **TPUs**: 2x Google Coral Edge TPU M.2 A+E key
+- **PCIe**: Dual x1 lanes
+- **OS**: Linux 6.6.89-cix (aarch64)
+
+### PCIe Topology
+
+```
+93:00.0 System peripheral: Global Unichip Corp. Coral Edge TPU
+94:00.0 System peripheral: Global Unichip Corp. Coral Edge TPU
+```
+
+Both TPUs visible at `/dev/apex_0` and `/dev/apex_1`.
+
+## Installation
+
+### 1. System Dependencies
+
+```bash
+# Add Coral repository
+echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | \
+  sudo tee /etc/apt/sources.list.d/coral-edgetpu.list
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+
+# Install Edge TPU runtime and driver
+sudo apt update
+sudo apt install libedgetpu1-std gasket-dkms
+```
+
+### 2. Device Permissions
+
+```bash
+# Create udev rule for non-root access
+echo 'SUBSYSTEM=="apex", MODE="0660", GROUP="plugdev"' | \
+  sudo tee /etc/udev/rules.d/99-apex.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# Add user to plugdev group (if not already)
+sudo usermod -aG plugdev $USER
+```
+
+### 3. Python Environment
+
+**Important**: Requires Python 3.9 for Coral-compatible TFLite runtime.
+
+```bash
+# Install Python 3.9
+pyenv install 3.9.18
+
+# Create virtual environment
+~/.pyenv/versions/3.9.18/bin/python -m venv coral39
+source coral39/bin/activate
+
+# Install Coral-compatible TFLite runtime
+pip install https://github.com/google-coral/pycoral/releases/download/v2.0.0/tflite_runtime-2.5.0.post1-cp39-cp39-linux_aarch64.whl
+
+# Install other dependencies
+pip install "numpy<2" "opencv-python-headless<4.10" pillow requests paho-mqtt
+```
+
+### 4. Verify Installation
+
+```bash
+python -c "
+from tflite_runtime.interpreter import Interpreter, load_delegate
+d0 = load_delegate('libedgetpu.so.1', {'device': ':0'})
+d1 = load_delegate('libedgetpu.so.1', {'device': ':1'})
+print('Both TPUs accessible!')
+"
+```
+
+## Quick Start
+
+### Download Test Model
+
+```bash
+cd models/
+wget https://github.com/google-coral/test_data/raw/master/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite
+wget https://raw.githubusercontent.com/google-coral/test_data/master/coco_labels.txt
+```
+
+### Run Benchmark
+
+```bash
+# Activate environment
+source coral39/bin/activate
+
+# Quick benchmark (1000 iterations, 60s sustained)
+python run_benchmark.py
+
+# Stress test (5000 iterations, 5 min sustained)
+python run_benchmark.py --stress
+```
+
+### Basic Inference Example
+
+```python
+from src import DualEdgeTPU
+
+# Initialize (auto-discovers both TPUs)
+tpu = DualEdgeTPU()
+
+# Load model on both TPUs
+tpu.load_model("models/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite")
+
+# Run inference (automatic load balancing)
+result = tpu.detect(image_data, threshold=0.5)
+
+# Or specify TPU explicitly
+result_tpu0 = tpu.detect(image_data, device_idx=0)
+result_tpu1 = tpu.detect(image_data, device_idx=1)
+```
+
+## Project Structure
+
+```
+CoralDualEdgeTPU/
+├── src/
+│   ├── dual_tpu.py      # Core dual TPU management
+│   ├── camera.py        # AXIS network camera interface
+│   ├── tracker.py       # Object tracking (IoU/centroid)
+│   ├── pipeline.py      # Detection + classification pipeline
+│   ├── benchmark.py     # Comprehensive benchmark suite
+│   └── output.py        # MQTT/webhook publishers
+├── examples/
+│   ├── basic_inference.py
+│   ├── axis_camera_pipeline.py
+│   └── sky_watcher.py   # Airplane/satellite detection
+├── models/              # Edge TPU compiled models
+├── benchmark_results/   # JSON/Markdown benchmark reports
+└── run_benchmark.py     # Benchmark runner
+```
+
+## Features
+
+### Dual TPU Management
+
+- **Automatic discovery** of all available Edge TPU devices
+- **Round-robin load balancing** for single-stream inference
+- **Parallel inference** for maximum throughput
+- **Thread-safe** operations with per-device locking
+- **Independent models** - load different models on each TPU
+
+### Camera Support
+
+- **AXIS M3057-PLVE MK II** panoramic camera support
+- Generic **RTSP streaming** for any network camera
+- Multiple **view modes**: panoramic, quad, view areas
+- **Auto-reconnect** on network drops
+- **Frame buffering** for consistent inference rates
+
+### Object Tracking
+
+- **IoU-based tracker** for crowded scenes
+- **Centroid tracker** for sparse objects
+- **Track persistence** across frames
+- **Velocity estimation** for motion prediction
+
+### Event Publishing
+
+- **MQTT** output with configurable topics
+- **HTTP webhooks** with batching and retry
+- **Object filtering** by class and confidence
+- **Rate limiting** per track
+
+## Benchmark Details
+
+### Test Methodology
+
+Each benchmark run includes:
+
+1. **Warmup**: 50 iterations to reach thermal equilibrium
+2. **Timed run**: 1000-5000 iterations with per-inference timing
+3. **Thermal monitoring**: CPU temperature sampled every 0.5s
+4. **Cooldown**: 5s between tests
+
+### Latency Distribution
+
+```
+Single TPU (5000 iterations):
+  Mean:   8.83 ms
+  Std:    1.00 ms
+  Min:    6.53 ms
+  Max:   16.21 ms
+  p50:    8.84 ms
+  p95:   11.11 ms
+  p99:   11.53 ms
+
+Dual TPU Parallel (10000 iterations):
+  Mean:   9.20 ms
+  Std:    1.29 ms
+  Min:    6.45 ms
+  Max:   14.93 ms
+  p50:    9.06 ms
+  p95:   11.56 ms
+  p99:   12.68 ms
+```
+
+### Sustained Load Performance
+
+5-minute continuous inference at maximum throughput:
+
+| Time | Inferences | Rate | Temp |
+|------|-----------|------|------|
+| 0s | 0 | - | 43°C |
+| 60s | 13,198 | 220/s | 43°C |
+| 120s | 25,617 | 213/s | 43°C |
+| 180s | 37,917 | 211/s | 43°C |
+| 240s | 50,336 | 210/s | 43°C |
+| 300s | 62,514 | 208/s | 43°C |
+
+**Key findings:**
+- No thermal throttling (temperature constant at 43°C)
+- Slight throughput decrease over time (~5%) due to system scheduling
+- Both TPUs evenly utilized (TPU0: 33,015 / TPU1: 29,499)
+
+## Use Cases
+
+### Sky Watcher (Airplane/Satellite Detection)
+
+```bash
+python examples/sky_watcher.py
+```
+
+Features:
+- Real-time airplane detection from AXIS panoramic cameras
+- Satellite tracking (solar-illuminated at night)
+- MQTT publishing for external integration
+- Object tracking with unique IDs
+
+### Multi-Camera Surveillance
+
+```python
+from src import LivePipeline, DualTPUPipeline
+
+pipeline = DualTPUPipeline(
+    detection_model="models/ssd_mobilenet_edgetpu.tflite",
+    classification_model="models/mobilenet_v2_edgetpu.tflite"
+)
+
+live = LivePipeline(pipeline)
+live.add_axis_camera("cam1", "192.168.1.100", username="admin", password="pass")
+live.add_axis_camera("cam2", "192.168.1.101", username="admin", password="pass")
+
+with live:
+    for result in live.results():
+        for detection in result.detections:
+            print(f"[{result.camera_name}] {detection.class_name}: {detection.confidence:.2f}")
+```
+
+## Troubleshooting
+
+### TPU Not Detected
+
+```bash
+# Check device nodes
+ls -la /dev/apex*
+
+# Check PCIe devices
+lspci | grep -i coral
+
+# Check driver loaded
+lsmod | grep apex
+```
+
+### Permission Denied
+
+```bash
+# Verify udev rule
+cat /etc/udev/rules.d/99-apex.rules
+
+# Reload rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# Check group membership
+groups | grep plugdev
+```
+
+### Segmentation Fault
+
+The Edge TPU library requires specific TFLite runtime versions:
+
+- **libedgetpu 16.0** requires **tflite-runtime 2.5.0.post1**
+- PyPI's tflite-runtime 2.14.0 is **incompatible**
+- Use Python 3.9 with the Coral-provided wheel (see Installation)
+
+## Performance Optimization
+
+### Maximum Throughput
+
+For highest aggregate throughput, run both TPUs in parallel:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+def infer_on_device(tpu, data, device_idx):
+    return tpu.detect(data, device_idx=device_idx)
+
+with ThreadPoolExecutor(max_workers=2) as executor:
+    future0 = executor.submit(infer_on_device, tpu, data0, 0)
+    future1 = executor.submit(infer_on_device, tpu, data1, 1)
+    result0, result1 = future0.result(), future1.result()
+```
+
+### Minimum Latency
+
+For lowest single-inference latency, use one TPU:
+
+```python
+result = tpu.detect(data, device_idx=0)
+```
+
+### Power Management
+
+The standard libedgetpu (`libedgetpu1-std`) uses reduced clock for lower power. For maximum performance:
+
+```bash
+sudo apt install libedgetpu1-max
+```
+
+## Authors
+
+- **Dr. Robert McGwier, PhD** (N4HY)
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+- [Google Coral](https://coral.ai/) for the Edge TPU hardware and software
+- [TensorFlow Lite](https://www.tensorflow.org/lite) for the inference runtime
+- Orange Pi for the excellent ARM SBC platform

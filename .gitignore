@@ -1,0 +1,30 @@
+# Virtual environments
+coral39/
+tpuvenv/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Pyenv
+.python-version
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Models (large files - download separately)
+models/*.tflite
+models/*.pb
+
+# Keep labels
+!models/*.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
