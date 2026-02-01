@@ -372,6 +372,7 @@ The Edge TPU library requires specific TFLite runtime versions:
 - **libedgetpu 16.0** requires **tflite-runtime 2.5.0.post1**
 - PyPI's tflite-runtime 2.14.0 is **incompatible**
 - Use Python 3.9 with the Coral-provided wheel (see Installation)
+- **libedgetpu1-max** causes segfaults even with the correct runtime - use **libedgetpu1-std** only
 
 ## Performance Optimization
 
@@ -401,11 +402,19 @@ result = tpu.detect(data, device_idx=0)
 
 ### Power Management
 
-The standard libedgetpu (`libedgetpu1-std`) uses reduced clock for lower power. For maximum performance:
+The standard libedgetpu (`libedgetpu1-std`) uses reduced clock for lower power.
 
-```bash
-sudo apt install libedgetpu1-max
-```
+**Note on libedgetpu1-max**: The high-performance library (`libedgetpu1-max`) is currently **incompatible** with this setup:
+
+- `libedgetpu1-max` (v16.0, July 2021) causes segmentation faults when loading models
+- The crash occurs during `Interpreter()` initialization with the EdgeTPU delegate
+- This affects both `tflite-runtime 2.5.0.post1` (required for libedgetpu 16.0) and newer versions
+- Root cause: The max library hasn't been updated since 2021 and has compatibility issues with current TFLite runtimes on aarch64
+
+Until Google releases an updated libedgetpu1-max, use `libedgetpu1-std` which provides stable performance:
+- 217+ inferences/second with dual TPUs
+- No thermal throttling (41°C sustained)
+- Near-linear scaling (1.97x)
 
 ## Authors
 
