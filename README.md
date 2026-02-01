@@ -52,6 +52,13 @@ Near-linear scaling with minimal latency increase demonstrates efficient PCIe bu
 
 Both TPUs visible at `/dev/apex_0` and `/dev/apex_1`.
 
+### Supported Cameras
+
+| Camera | Type | Resolution | Features |
+|--------|------|------------|----------|
+| AXIS M3057-PLVE MK II | Panoramic Dome | 6MP | 360° view, multiple view modes, RTSP |
+| Empire Tech PTZ425DB-AT | PTZ | 4MP | 25x zoom, auto-tracking, IR 100m, RTSP |
+
 ## Installation
 
 ### 1. System Dependencies
@@ -157,7 +164,7 @@ result_tpu1 = tpu.detect(image_data, device_idx=1)
 CoralDualEdgeTPU/
 ├── src/
 │   ├── dual_tpu.py      # Core dual TPU management
-│   ├── camera.py        # AXIS network camera interface
+│   ├── camera.py        # AXIS & Empire Tech PTZ camera interface
 │   ├── tracker.py       # Object tracking (IoU/centroid)
 │   ├── pipeline.py      # Detection + classification pipeline
 │   ├── benchmark.py     # Comprehensive benchmark suite
@@ -165,9 +172,10 @@ CoralDualEdgeTPU/
 ├── examples/
 │   ├── basic_inference.py
 │   ├── axis_camera_pipeline.py
-│   └── sky_watcher.py   # Airplane/satellite detection
+│   └── sky_watcher.py   # Airplane/satellite detection (dual camera)
 ├── models/              # Edge TPU compiled models
 ├── benchmark_results/   # JSON/Markdown benchmark reports
+├── coral39/             # Python 3.9 virtual environment
 └── run_benchmark.py     # Benchmark runner
 ```
 
@@ -265,10 +273,12 @@ python examples/sky_watcher.py
 ```
 
 Features:
-- Real-time airplane detection from AXIS panoramic cameras
+- **Dual camera support**: AXIS panoramic + Empire Tech PTZ
+- Real-time airplane detection with TPU acceleration
 - Satellite tracking (solar-illuminated at night)
+- PTZ auto-tracking for detected aircraft
 - MQTT publishing for external integration
-- Object tracking with unique IDs
+- Object tracking with unique IDs across frames
 
 ### Multi-Camera Surveillance
 
