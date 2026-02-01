@@ -263,6 +263,11 @@ Dual TPU Parallel (10000 iterations):
 - No thermal throttling (temperature constant at 43°C)
 - Slight throughput decrease over time (~5%) due to system scheduling
 - Both TPUs evenly utilized (TPU0: 33,015 / TPU1: 29,499)
+- Combined system compute budget:
+- AcceleratorTOPS (int8)Status
+- CIX Zhouyi V3 NPU~4-6 TOPS*Buggy (single inference only)
+- Dual Coral Edge TPU7.72 TOPSPending PCIe adapterTotal (working)~7.72 TOPSWednesdayTotal (if NPU fixed)~12-14 TOPSFuture
+
 
 ## Use Cases
 
