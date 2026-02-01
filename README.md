@@ -266,7 +266,7 @@ Dual TPU Parallel (10000 iterations):
 - Combined system compute budget:
 - AcceleratorTOPS (int8)Status
 - CIX Zhouyi V3 NPU~4-6 TOPS*Buggy (single inference only)
-- Dual Coral Edge TPU7.72 TOPSPending PCIe adapterTotal (working)~7.72 TOPSWednesdayTotal (if NPU fixed)~12-14 TOPSFuture
+- Dual Coral Edge TPU 7.72 TOPS Pending PCIe adapterTotal (working)~ 7.72 TOPS WednesdayTotal (if NPU fixed)~12-14 TOPS Future
 
 
 ## Use Cases
