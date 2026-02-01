@@ -1,0 +1,175 @@
+{
+  "system_info": {
+    "hostname": "orangepi6plus",
+    "kernel": "6.6.89-cix",
+    "arch": "aarch64",
+    "tpu_devices": [
+      {
+        "path": "/dev/apex_0",
+        "model_loaded": "/home/orangepi/CoralDualEdgeTPU/models/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite"
+      },
+      {
+        "path": "/dev/apex_1",
+        "model_loaded": "/home/orangepi/CoralDualEdgeTPU/models/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite"
+      }
+    ],
+    "pcie_info": "93:00.0 System peripheral: Global Unichip Corp. Coral Edge TPU (prog-if ff)\n\tSubsystem: Global Unichip Corp. Coral Edge TPU\n\tFlags: bus master, fast devsel, latency 0, IRQ 149, IOMMU group 3\n\tMemory at 1400100000 (64-bit, prefetchable) [size=16K]\n\tMemory at 1400000000 (64-bit, prefetchable) [size=1M]\n\tCapabilities: <access denied>\n\tKernel driver in use: apex\n\tKernel modules: apex\n\n94:00.0 System peripheral: Global Unichip Corp. Coral Edge TPU (prog-if ff)\n\tSubsystem: Global Unichip Corp. Coral Edge TPU\n\tFlags: bus master, fast devsel, latency 0, IRQ 149, IOMMU group 3\n\tMemory at 1400300000 (64-bit, prefetchable) [size=16K]\n\tMemory at 1400200000 (64-bit, prefetchable) [size=1M]\n\tCapabilities: <access denied>\n\tKernel driver in use: apex\n\tKernel modules: apex\n\n",
+    "cpu": "CIX P1 CD8160"
+  },
+  "model_info": {
+    "path": "/home/orangepi/CoralDualEdgeTPU/models/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite",
+    "name": "ssd_mobilenet_v2_coco_quant_postprocess_edgetpu",
+    "input_shape": [
+      "1",
+      "300",
+      "300",
+      "3"
+    ]
+  },
+  "results": [
+    {
+      "name": "single_tpu_0",
+      "model_name": "ssd_mobilenet_v2_coco_quant_postprocess_edgetpu",
+      "input_shape": [
+        "1",
+        "300",
+        "300",
+        "3"
+      ],
+      "num_iterations": 1000,
+      "num_devices": 1,
+      "total_time_sec": 9.040086080000037,
+      "throughput_fps": 110.61841570428895,
+      "latency_mean_ms": 8.966341269981058,
+      "latency_std_ms": 0.931840214031828,
+      "latency_min_ms": 6.521499999507796,
+      "latency_max_ms": 15.53147400409216,
+      "latency_p50_ms": 8.867912500136299,
+      "latency_p95_ms": 11.02325694882893,
+      "latency_p99_ms": 12.122250550673924,
+      "temp_start_c": 42.0,
+      "temp_end_c": 41.0,
+      "temp_max_c": 42.0,
+      "device_paths": [
+        "/dev/apex_0"
+      ],
+      "timestamp": "2026-02-01T15:12:35.349980"
+    },
+    {
+      "name": "single_tpu_1",
+      "model_name": "ssd_mobilenet_v2_coco_quant_postprocess_edgetpu",
+      "input_shape": [
+        "1",
+        "300",
+        "300",
+        "3"
+      ],
+      "num_iterations": 1000,
+      "num_devices": 1,
+      "total_time_sec": 9.092040996001742,
+      "throughput_fps": 109.98630565345599,
+      "latency_mean_ms": 9.02566889001173,
+      "latency_std_ms": 0.9723212330239773,
+      "latency_min_ms": 6.535179003549274,
+      "latency_max_ms": 17.821353001636453,
+      "latency_p50_ms": 8.987244498712244,
+      "latency_p95_ms": 11.075795454235049,
+      "latency_p99_ms": 12.110711433633695,
+      "temp_start_c": 41.0,
+      "temp_end_c": 41.0,
+      "temp_max_c": 41.0,
+      "device_paths": [
+        "/dev/apex_1"
+      ],
+      "timestamp": "2026-02-01T15:12:50.109553"
+    },
+    {
+      "name": "dual_tpu_parallel",
+      "model_name": "ssd_mobilenet_v2_coco_quant_postprocess_edgetpu",
+      "input_shape": [
+        "1",
+        "300",
+        "300",
+        "3"
+      ],
+      "num_iterations": 2000,
+      "num_devices": 2,
+      "total_time_sec": 9.213496497999586,
+      "throughput_fps": 217.07285615555784,
+      "latency_mean_ms": 9.155144715045026,
+      "latency_std_ms": 1.0603536533159246,
+      "latency_min_ms": 6.626957001572009,
+      "latency_max_ms": 15.930830995785072,
+      "latency_p50_ms": 9.069526498933556,
+      "latency_p95_ms": 11.183721997076645,
+      "latency_p99_ms": 12.806299592339201,
+      "temp_start_c": 41.0,
+      "temp_end_c": 41.0,
+      "temp_max_c": 41.0,
+      "device_paths": [
+        "/dev/apex_0",
+        "/dev/apex_1"
+      ],
+      "timestamp": "2026-02-01T15:13:05.390808"
+    },
+    {
+      "name": "dual_tpu_alternating",
+      "model_name": "ssd_mobilenet_v2_coco_quant_postprocess_edgetpu",
+      "input_shape": [
+        "1",
+        "300",
+        "300",
+        "3"
+      ],
+      "num_iterations": 1000,
+      "num_devices": 2,
+      "total_time_sec": 9.027983642001345,
+      "throughput_fps": 110.76670490934978,
+      "latency_mean_ms": 8.962973031993897,
+      "latency_std_ms": 0.9437655329273873,
+      "latency_min_ms": 6.617817001824733,
+      "latency_max_ms": 15.90995200240286,
+      "latency_p50_ms": 8.93883599928813,
+      "latency_p95_ms": 10.966750047373353,
+      "latency_p99_ms": 12.504912869626422,
+      "temp_start_c": 41.0,
+      "temp_end_c": 41.0,
+      "temp_max_c": 41.0,
+      "device_paths": [
+        "/dev/apex_0",
+        "/dev/apex_1"
+      ],
+      "timestamp": "2026-02-01T15:13:20.134534"
+    },
+    {
+      "name": "sustained_load_60s",
+      "model_name": "ssd_mobilenet_v2_coco_quant_postprocess_edgetpu",
+      "input_shape": [
+        "1",
+        "300",
+        "300",
+        "3"
+      ],
+      "num_iterations": 13358,
+      "num_devices": 2,
+      "total_time_sec": 60.96816924599989,
+      "throughput_fps": 219.09793528655803,
+      "latency_mean_ms": 9.121147652439994,
+      "latency_std_ms": 1.1161893661712325,
+      "latency_min_ms": 6.487071004812606,
+      "latency_max_ms": 24.549177003791556,
+      "latency_p50_ms": 9.035521998157492,
+      "latency_p95_ms": 11.220777002017712,
+      "latency_p99_ms": 12.893716128091912,
+      "temp_start_c": 41.0,
+      "temp_end_c": 41.0,
+      "temp_max_c": 41.0,
+      "device_paths": [
+        "/dev/apex_0",
+        "/dev/apex_1"
+      ],
+      "timestamp": "2026-02-01T15:14:27.298169"
+    }
+  ],
+  "generated_at": "2026-02-01T15:14:27.352103"
+}
