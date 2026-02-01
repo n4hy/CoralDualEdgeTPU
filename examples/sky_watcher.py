@@ -23,7 +23,7 @@ import cv2
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src import (
-    AxisCamera, CameraConfig, MultiCameraManager,
+    AxisCamera, EmpireTechPTZ, CameraConfig, MultiCameraManager,
     DualTPUPipeline, LivePipeline
 )
 from src.output import (
@@ -36,25 +36,28 @@ from src.output import (
 # CONFIGURATION
 # =============================================================================
 
-# Cameras - update with your AXIS M3057-PLVE MK II settings
+# Cameras - update with your camera settings
+# Camera 1: AXIS M3057-PLVE MK II (panoramic dome)
+# Camera 2: Empire Tech PTZ425DB-AT (4MP 25x PTZ)
+
 CAMERAS = [
     {
-        "name": "sky-cam-1",
+        "type": "axis",
+        "name": "axis-panoramic",
         "ip": "192.168.1.100",  # UPDATE THIS
         "username": "root",
         "password": "password",  # UPDATE THIS
         "view": AxisCamera.VIEW_PANORAMIC,  # Full 360 view for sky watching
         "resolution": "1920x1080",
     },
-    # Second camera when available:
-    # {
-    #     "name": "sky-cam-2",
-    #     "ip": "192.168.1.101",
-    #     "username": "root",
-    #     "password": "password",
-    #     "view": AxisCamera.VIEW_PANORAMIC,
-    #     "resolution": "1920x1080",
-    # },
+    {
+        "type": "empiretech",
+        "name": "ptz-tracker",
+        "ip": "192.168.1.101",  # UPDATE THIS
+        "username": "admin",
+        "password": "password",  # UPDATE THIS
+        "main_stream": True,  # 4MP full resolution
+    },
 ]
 
 # MQTT Configuration
@@ -188,15 +191,26 @@ def main():
     # Add cameras
     print("\nConfiguring cameras...")
     for cam in CAMERAS:
-        print(f"  Adding: {cam['name']} at {cam['ip']}")
-        live.add_axis_camera(
-            name=cam["name"],
-            ip=cam["ip"],
-            username=cam.get("username", ""),
-            password=cam.get("password", ""),
-            view=cam.get("view", ""),
-            resolution=cam.get("resolution", "1920x1080")
-        )
+        cam_type = cam.get("type", "axis")
+        print(f"  Adding {cam_type}: {cam['name']} at {cam['ip']}")
+
+        if cam_type == "empiretech":
+            live.cameras.add_empiretech_ptz(
+                name=cam["name"],
+                ip=cam["ip"],
+                username=cam.get("username", ""),
+                password=cam.get("password", ""),
+                main_stream=cam.get("main_stream", True)
+            )
+        else:  # axis or default
+            live.add_axis_camera(
+                name=cam["name"],
+                ip=cam["ip"],
+                username=cam.get("username", ""),
+                password=cam.get("password", ""),
+                view=cam.get("view", ""),
+                resolution=cam.get("resolution", "1920x1080")
+            )
 
     # Process callback
     def on_frame_result(result):

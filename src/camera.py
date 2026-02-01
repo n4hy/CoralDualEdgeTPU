@@ -1,8 +1,10 @@
-"""Network camera interface for AXIS and other RTSP cameras.
+"""Network camera interface for AXIS, Empire Tech, and other RTSP cameras.
 
 Supports:
 - AXIS M3057-PLVE MK II panoramic cameras
-- Generic RTSP streams
+- Empire Tech PTZ425DB-AT PTZ cameras (4MP 25x zoom)
+- Generic RTSP/ONVIF streams
+- PTZ control (pan, tilt, zoom)
 - Frame buffering for consistent inference rates
 """
 
@@ -253,6 +255,248 @@ class AxisCamera:
         return self._frame_count
 
 
+class EmpireTechPTZ(AxisCamera):
+    """Interface for Empire Tech PTZ cameras (PTZ425DB-AT and similar).
+
+    Empire Tech PTZ425DB-AT specs:
+    - 4MP 1/2.8" STARVIS CMOS sensor
+    - 25x optical zoom (5mm-125mm)
+    - H.264/H.265 encoding
+    - RTSP streaming
+    - Auto-tracking, perimeter protection
+    - IR distance 100m
+
+    RTSP URL format:
+    - Main stream: rtsp://<ip>/cam/realmonitor?channel=1&subtype=0
+    - Sub stream:  rtsp://<ip>/cam/realmonitor?channel=1&subtype=1
+    """
+
+    # Stream types
+    MAIN_STREAM = "subtype=0"  # 4MP full resolution
+    SUB_STREAM = "subtype=1"   # Lower resolution for preview
+
+    # Resolution presets
+    RES_4MP = "2560x1440"
+    RES_1080P = "1920x1080"
+    RES_720P = "1280x720"
+
+    def __init__(self, config: CameraConfig):
+        super().__init__(config)
+        self._ptz_session = None
+
+    @classmethod
+    def create_rtsp_url(cls, ip: str, username: str = "", password: str = "",
+                        channel: int = 1, subtype: int = 0) -> str:
+        """Build RTSP URL for Empire Tech camera.
+
+        Args:
+            ip: Camera IP address
+            username: Camera username
+            password: Camera password
+            channel: Video channel (usually 1)
+            subtype: 0 for main stream (4MP), 1 for sub stream
+
+        Returns:
+            Complete RTSP URL
+        """
+        if username and password:
+            return f"rtsp://{username}:{password}@{ip}/cam/realmonitor?channel={channel}&subtype={subtype}"
+        return f"rtsp://{ip}/cam/realmonitor?channel={channel}&subtype={subtype}"
+
+    def ptz_move(self, pan: float = 0, tilt: float = 0, zoom: float = 0,
+                 speed: float = 0.5) -> bool:
+        """Move the PTZ camera.
+
+        Args:
+            pan: Pan speed (-1.0 to 1.0, negative=left, positive=right)
+            tilt: Tilt speed (-1.0 to 1.0, negative=down, positive=up)
+            zoom: Zoom speed (-1.0 to 1.0, negative=wide, positive=tele)
+            speed: Movement speed multiplier (0.0 to 1.0)
+
+        Returns:
+            True if command sent successfully
+        """
+        # CGI command for PTZ control (Dahua-compatible)
+        # Most Empire Tech cameras use Dahua protocol
+        import requests
+
+        try:
+            # Continuous move command
+            url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
+            params = {
+                "action": "start",
+                "channel": 1,
+                "code": self._get_ptz_code(pan, tilt, zoom),
+                "arg1": int(abs(pan) * speed * 8),  # Speed 1-8
+                "arg2": int(abs(tilt) * speed * 8),
+                "arg3": 0
+            }
+
+            auth = None
+            if self.config.username:
+                auth = (self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=2)
+            return response.status_code == 200
+
+        except Exception as e:
+            print(f"[{self.config.name}] PTZ error: {e}")
+            return False
+
+    def ptz_stop(self) -> bool:
+        """Stop PTZ movement."""
+        import requests
+
+        try:
+            url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
+            params = {"action": "stop", "channel": 1, "code": "Up"}
+
+            auth = None
+            if self.config.username:
+                auth = (self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=2)
+            return response.status_code == 200
+
+        except Exception as e:
+            print(f"[{self.config.name}] PTZ stop error: {e}")
+            return False
+
+    def ptz_goto_preset(self, preset: int) -> bool:
+        """Move to a saved preset position.
+
+        Args:
+            preset: Preset number (1-255)
+
+        Returns:
+            True if command sent successfully
+        """
+        import requests
+
+        try:
+            url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
+            params = {
+                "action": "start",
+                "channel": 1,
+                "code": "GotoPreset",
+                "arg1": 0,
+                "arg2": preset,
+                "arg3": 0
+            }
+
+            auth = None
+            if self.config.username:
+                auth = (self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=5)
+            return response.status_code == 200
+
+        except Exception as e:
+            print(f"[{self.config.name}] PTZ preset error: {e}")
+            return False
+
+    def ptz_set_preset(self, preset: int) -> bool:
+        """Save current position as preset.
+
+        Args:
+            preset: Preset number (1-255)
+
+        Returns:
+            True if command sent successfully
+        """
+        import requests
+
+        try:
+            url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
+            params = {
+                "action": "start",
+                "channel": 1,
+                "code": "SetPreset",
+                "arg1": 0,
+                "arg2": preset,
+                "arg3": 0
+            }
+
+            auth = None
+            if self.config.username:
+                auth = (self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=2)
+            return response.status_code == 200
+
+        except Exception as e:
+            print(f"[{self.config.name}] PTZ set preset error: {e}")
+            return False
+
+    def zoom_to(self, zoom_level: float) -> bool:
+        """Set absolute zoom level.
+
+        Args:
+            zoom_level: Zoom level (0.0 = wide, 1.0 = full tele 25x)
+
+        Returns:
+            True if command sent successfully
+        """
+        # Use relative zoom to approximate absolute
+        # Full zoom range on PTZ425DB-AT is 25x
+        import requests
+
+        try:
+            url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
+            params = {
+                "action": "start",
+                "channel": 1,
+                "code": "ZoomTele" if zoom_level > 0.5 else "ZoomWide",
+                "arg1": int(zoom_level * 8),
+                "arg2": 0,
+                "arg3": 0
+            }
+
+            auth = None
+            if self.config.username:
+                auth = (self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=2)
+            return response.status_code == 200
+
+        except Exception as e:
+            print(f"[{self.config.name}] Zoom error: {e}")
+            return False
+
+    def _get_ip(self) -> str:
+        """Extract IP from RTSP URL."""
+        url = self.config.rtsp_url
+        # Handle rtsp://user:pass@ip/... or rtsp://ip/...
+        if "@" in url:
+            return url.split("@")[1].split("/")[0].split(":")[0]
+        else:
+            return url.replace("rtsp://", "").split("/")[0].split(":")[0]
+
+    def _get_ptz_code(self, pan: float, tilt: float, zoom: float) -> str:
+        """Convert movement values to PTZ command code."""
+        if zoom > 0.1:
+            return "ZoomTele"
+        elif zoom < -0.1:
+            return "ZoomWide"
+        elif pan > 0.1 and tilt > 0.1:
+            return "RightUp"
+        elif pan > 0.1 and tilt < -0.1:
+            return "RightDown"
+        elif pan < -0.1 and tilt > 0.1:
+            return "LeftUp"
+        elif pan < -0.1 and tilt < -0.1:
+            return "LeftDown"
+        elif pan > 0.1:
+            return "Right"
+        elif pan < -0.1:
+            return "Left"
+        elif tilt > 0.1:
+            return "Up"
+        elif tilt < -0.1:
+            return "Down"
+        return "Up"  # Default
+
+
 class MultiCameraManager:
     """Manages multiple network cameras."""
 
@@ -287,6 +531,34 @@ class MultiCameraManager:
             password=password
         )
         return self.add_camera(config)
+
+    def add_empiretech_ptz(self, name: str, ip: str,
+                          username: str = "", password: str = "",
+                          main_stream: bool = True) -> EmpireTechPTZ:
+        """Add an Empire Tech PTZ camera (PTZ425DB-AT or similar).
+
+        Args:
+            name: Friendly name for the camera
+            ip: Camera IP address
+            username: Camera username
+            password: Camera password
+            main_stream: True for 4MP main stream, False for sub stream
+
+        Returns:
+            EmpireTechPTZ camera instance with PTZ control
+        """
+        subtype = 0 if main_stream else 1
+        url = EmpireTechPTZ.create_rtsp_url(ip, username, password, subtype=subtype)
+        config = CameraConfig(
+            name=name,
+            rtsp_url=url,
+            username=username,
+            password=password,
+            resolution=(2560, 1440) if main_stream else (1280, 720)
+        )
+        camera = EmpireTechPTZ(config)
+        self.cameras[name] = camera
+        return camera
 
     def start_all(self):
         """Start all cameras."""

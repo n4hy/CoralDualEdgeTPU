@@ -183,8 +183,10 @@ CoralDualEdgeTPU/
 
 ### Camera Support
 
-- **AXIS M3057-PLVE MK II** panoramic camera support
-- Generic **RTSP streaming** for any network camera
+- **AXIS M3057-PLVE MK II** panoramic dome camera
+- **Empire Tech PTZ425DB-AT** 4MP 25x PTZ camera with tracking
+- Generic **RTSP/ONVIF streaming** for any network camera
+- **PTZ control** - pan, tilt, zoom, presets
 - Multiple **view modes**: panoramic, quad, view areas
 - **Auto-reconnect** on network drops
 - **Frame buffering** for consistent inference rates
@@ -279,13 +281,45 @@ pipeline = DualTPUPipeline(
 )
 
 live = LivePipeline(pipeline)
-live.add_axis_camera("cam1", "192.168.1.100", username="admin", password="pass")
-live.add_axis_camera("cam2", "192.168.1.101", username="admin", password="pass")
+
+# Add AXIS panoramic camera
+live.add_axis_camera("panoramic", "192.168.1.100", username="admin", password="pass")
+
+# Add Empire Tech PTZ camera
+live.cameras.add_empiretech_ptz("ptz", "192.168.1.101", username="admin", password="pass")
 
 with live:
     for result in live.results():
         for detection in result.detections:
             print(f"[{result.camera_name}] {detection.class_name}: {detection.confidence:.2f}")
+```
+
+### PTZ Camera Control
+
+```python
+from src import EmpireTechPTZ, CameraConfig
+
+# Create PTZ camera
+config = CameraConfig(
+    name="ptz-cam",
+    rtsp_url=EmpireTechPTZ.create_rtsp_url("192.168.1.101", "admin", "password")
+)
+ptz = EmpireTechPTZ(config)
+ptz.connect()
+
+# Pan right, tilt up
+ptz.ptz_move(pan=0.5, tilt=0.3, speed=0.7)
+time.sleep(2)
+ptz.ptz_stop()
+
+# Zoom to 50%
+ptz.zoom_to(0.5)
+
+# Go to preset 1
+ptz.ptz_goto_preset(1)
+
+# Save current position as preset 5
+ptz.ptz_set_preset(5)
 ```
 
 ## Troubleshooting
