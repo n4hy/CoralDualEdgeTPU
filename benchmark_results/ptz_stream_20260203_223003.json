@@ -1,0 +1,81 @@
+{
+  "system_info": {
+    "hostname": "orangepi6plus",
+    "kernel": "6.6.89-cix",
+    "arch": "aarch64",
+    "tpu_device": {
+      "path": "/dev/apex_0",
+      "model_loaded": "/home/orangepi/CoralDualEdgeTPU/models/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite"
+    },
+    "cpu": "CIX P1 CD8160"
+  },
+  "camera_info": {
+    "name": "Empire Tech PTZ425DB-AT",
+    "ip": "192.168.1.108",
+    "resolution": "2560x1440",
+    "stream": "Main (4MP)",
+    "protocol": "RTSP"
+  },
+  "model_info": {
+    "path": "/home/orangepi/CoralDualEdgeTPU/models/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite",
+    "name": "ssd_mobilenet_v2_coco_quant_postprocess_edgetpu",
+    "input_shape": [
+      "1",
+      "300",
+      "300",
+      "3"
+    ]
+  },
+  "result": {
+    "name": "ptz_stream_benchmark",
+    "model_name": "ssd_mobilenet_v2_coco_quant_postprocess_edgetpu",
+    "camera_name": "Empire Tech PTZ425DB-AT",
+    "camera_resolution": [
+      2560,
+      1440
+    ],
+    "input_shape": [
+      "1",
+      "300",
+      "300",
+      "3"
+    ],
+    "duration_sec": 60.193819522857666,
+    "total_frames": 1802,
+    "frames_processed": 1802,
+    "frames_dropped": 0,
+    "capture_fps": 29.936628283169814,
+    "inference_fps": 29.936628283169814,
+    "effective_fps": 29.936628283169814,
+    "capture_latency_mean_ms": 0.002447482801069017,
+    "capture_latency_std_ms": 0.0032075430326913624,
+    "capture_latency_p95_ms": 0.0044189996515342465,
+    "capture_latency_p99_ms": 0.007940000614325982,
+    "preprocess_latency_mean_ms": 2.8281279844716307,
+    "preprocess_latency_std_ms": 1.4107516211436784,
+    "inference_latency_mean_ms": 9.323132504990369,
+    "inference_latency_std_ms": 1.6130290947250507,
+    "inference_latency_min_ms": 6.876016999740386,
+    "inference_latency_max_ms": 30.05133399983606,
+    "inference_latency_p50_ms": 9.298860999933822,
+    "inference_latency_p95_ms": 12.147596000613703,
+    "inference_latency_p99_ms": 15.381134240342364,
+    "e2e_latency_mean_ms": 12.154710214214823,
+    "e2e_latency_std_ms": 2.488498957840725,
+    "e2e_latency_p50_ms": 12.001945500287547,
+    "e2e_latency_p95_ms": 17.1774055001606,
+    "e2e_latency_p99_ms": 21.145155780650388,
+    "total_detections": 44,
+    "detections_per_frame_mean": 0.0244173140954495,
+    "detections_per_class": {
+      "suitcase": 27,
+      "person": 17
+    },
+    "temp_start_c": 42.0,
+    "temp_end_c": 42.0,
+    "temp_max_c": 42.0,
+    "device_path": "/dev/apex_0",
+    "timestamp": "2026-02-03T22:30:03.120216"
+  },
+  "generated_at": "2026-02-03T22:30:03.121362"
+}

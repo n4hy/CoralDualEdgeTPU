@@ -163,20 +163,23 @@ result_tpu1 = tpu.detect(image_data, device_idx=1)
 ```
 CoralDualEdgeTPU/
 ├── src/
-│   ├── dual_tpu.py      # Core dual TPU management
-│   ├── camera.py        # AXIS & Empire Tech PTZ camera interface
-│   ├── tracker.py       # Object tracking (IoU/centroid)
-│   ├── pipeline.py      # Detection + classification pipeline
-│   ├── benchmark.py     # Comprehensive benchmark suite
-│   └── output.py        # MQTT/webhook publishers
+│   ├── dual_tpu.py         # Core dual TPU management
+│   ├── camera.py           # AXIS & Empire Tech PTZ camera interface
+│   ├── tracker.py          # Object tracking (IoU/centroid)
+│   ├── pipeline.py         # Detection + classification pipeline
+│   ├── benchmark.py        # Comprehensive benchmark suite
+│   ├── stream_benchmark.py # PTZ camera streaming benchmark
+│   └── output.py           # MQTT/webhook publishers
 ├── examples/
 │   ├── basic_inference.py
 │   ├── axis_camera_pipeline.py
-│   └── sky_watcher.py   # Airplane/satellite detection (dual camera)
-├── models/              # Edge TPU compiled models
-├── benchmark_results/   # JSON/Markdown benchmark reports
-├── coral39/             # Python 3.9 virtual environment
-└── run_benchmark.py     # Benchmark runner
+│   ├── ptz_stream.py       # Simple PTZ camera web viewer
+│   └── sky_watcher.py      # Airplane/satellite detection (dual camera)
+├── models/                 # Edge TPU compiled models
+├── benchmark_results/      # JSON/Markdown benchmark reports
+├── coral39/                # Python 3.9 virtual environment
+├── run_benchmark.py        # TPU benchmark runner
+└── run_ptz_stream_benchmark.py  # PTZ streaming benchmark runner
 ```
 
 ## Features
@@ -268,6 +271,61 @@ Dual TPU Parallel (10000 iterations):
 - CIX Zhouyi V3 NPU~4-6 TOPS*Buggy (single inference only)
 - Dual Coral Edge TPU 7.72 TOPS Pending PCIe adapterTotal (working)~ 7.72 TOPS WednesdayTotal (if NPU fixed)~12-14 TOPS Future
 
+
+## PTZ Camera Streaming Benchmark
+
+Real-time object detection performance with live 4MP PTZ camera stream.
+
+### Configuration
+
+- **Camera**: Empire Tech PTZ425DB-AT (2560x1440 @ 30fps)
+- **Model**: SSD MobileNet V2 COCO (300x300 input)
+- **TPU**: Single Coral Edge TPU (`/dev/apex_0`)
+- **Duration**: 60 seconds
+
+### Results Summary
+
+| Metric | Value |
+|--------|-------|
+| Effective FPS | 29.9 |
+| Frames Processed | 1802 |
+| Frame Drop Rate | 0.0% |
+| Total Detections | 44 |
+
+### Latency Breakdown
+
+| Stage | Mean (ms) | p99 (ms) |
+|-------|-----------|----------|
+| Preprocessing | 2.83 | - |
+| TPU Inference | 9.32 | 15.38 |
+| **End-to-End** | **12.15** | **21.15** |
+
+### Inference Latency Distribution
+
+```
+Mean:   9.32 ms
+Std:    1.61 ms
+Min:    6.88 ms
+Max:   30.05 ms
+p50:    9.30 ms
+p95:   12.15 ms
+p99:   15.38 ms
+```
+
+### Run Streaming Benchmark
+
+```bash
+source coral39/bin/activate
+
+# Quick test (10 seconds)
+python run_ptz_stream_benchmark.py --quick
+
+# Full benchmark (60 seconds)
+python run_ptz_stream_benchmark.py
+
+# Custom duration
+python run_ptz_stream_benchmark.py --duration 120
+```
 
 ## Use Cases
 
@@ -415,6 +473,48 @@ Until Google releases an updated libedgetpu1-max, use `libedgetpu1-std` which pr
 - 217+ inferences/second with dual TPUs
 - No thermal throttling (41°C sustained)
 - Near-linear scaling (1.97x)
+
+## Recent Updates
+
+### 2026-02-03: PTZ Camera Streaming Integration
+
+Added real-time PTZ camera streaming with Edge TPU inference:
+
+**New Features:**
+- **PTZ Camera Support**: Full integration with Empire Tech PTZ425DB-AT camera
+  - 4MP main stream (2560x1440 @ 30fps) via RTSP
+  - Network discovery and connectivity verification
+  - Automatic camera detection at default IP (192.168.1.108)
+
+- **Streaming Benchmark Suite** (`run_ptz_stream_benchmark.py`):
+  - End-to-end latency measurement (capture → preprocess → inference)
+  - Per-stage timing breakdown (capture, preprocessing, TPU inference)
+  - Latency percentiles (p50, p95, p99)
+  - Detection statistics by class
+  - Thermal monitoring during benchmark
+  - JSON and Markdown report generation
+
+- **Web-based Camera Viewer** (`examples/ptz_stream.py`):
+  - MJPEG streaming via Flask
+  - Browser-accessible at `http://<host>:5000`
+
+**Benchmark Results (60-second test):**
+| Metric | Value |
+|--------|-------|
+| Camera Resolution | 2560x1440 (4MP) |
+| Effective FPS | 29.9 |
+| Frame Drop Rate | 0.0% |
+| Inference Latency | 9.32ms mean |
+| End-to-End Latency | 12.15ms mean |
+| Temperature | 42°C (stable) |
+
+**Key Finding**: Single Edge TPU can process full 30fps 4MP video stream with only 12ms end-to-end latency and zero frame drops.
+
+**Files Added:**
+- `src/stream_benchmark.py` - Streaming benchmark module
+- `run_ptz_stream_benchmark.py` - CLI benchmark runner
+- `examples/ptz_stream.py` - Web-based camera viewer
+- `benchmark_results/ptz_stream_*.json` - Benchmark results
 
 ## Authors
 
