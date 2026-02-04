@@ -13,7 +13,6 @@ import gc
 import json
 import os
 import statistics
-import subprocess
 import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -607,7 +606,7 @@ class PTZStreamBenchmark:
                     if 'model name' in line or 'Hardware' in line:
                         info["cpu"] = line.split(':')[1].strip()
                         break
-        except:
+        except Exception:
             pass
 
         return info

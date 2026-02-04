@@ -21,11 +21,11 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
-from .dual_tpu import DualEdgeTPU, list_edge_tpus
+from .dual_tpu import DualEdgeTPU
 
 
 @dataclass
@@ -660,7 +660,7 @@ class DualTPUBenchmark:
                 capture_output=True, text=True, timeout=5
             )
             info["pcie_info"] = result.stdout
-        except:
+        except Exception:
             pass
 
         # CPU info
@@ -671,7 +671,7 @@ class DualTPUBenchmark:
                     if 'model name' in line or 'Hardware' in line:
                         info["cpu"] = line.split(':')[1].strip()
                         break
-        except:
+        except Exception:
             pass
 
         return info

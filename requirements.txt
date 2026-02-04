@@ -1,19 +1,31 @@
 # Coral Edge TPU dependencies
-# Install pycoral following: https://coral.ai/docs/accelerator/get-started/
+# See README.md for full installation instructions
+#
+# IMPORTANT: Python 3.9 is required for Coral-compatible TFLite runtime
+# Install the Coral wheel manually:
+#   pip install https://github.com/google-coral/pycoral/releases/download/v2.0.0/tflite_runtime-2.5.0.post1-cp39-cp39-linux_aarch64.whl
+#
+# For Python 3.11+, tflite-runtime from PyPI may work but is not officially supported
 
-pycoral>=2.0.0
-tflite-runtime>=2.5.0
-numpy>=1.19.0
+# Core dependencies
+numpy<2
 Pillow>=8.0.0
 
 # Camera and video processing
-opencv-python>=4.5.0
+opencv-python-headless<4.10
 
 # MQTT publishing
 paho-mqtt>=1.6.0
 
 # Webhook publishing
 requests>=2.25.0
+
+# Web streaming (for ptz_stream.py example)
+flask>=2.0.0
+
+# GUI for camera control (camera_control_gui.py)
+# Uses tkinter (included with Python) and PIL for video display
+# No additional installation needed
 
 # Optional: ONVIF camera discovery
 # onvif-zeep>=0.2.12

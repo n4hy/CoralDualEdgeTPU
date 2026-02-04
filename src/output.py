@@ -17,8 +17,8 @@ import time
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from queue import Queue, Empty
-from typing import Optional, Callable
-from urllib.parse import urlparse
+from typing import Optional
+from urllib.parse import urlparse  # noqa: F401
 
 import requests
 
@@ -497,7 +497,7 @@ class SatelliteDetector:
 
         self._point_tracks: dict = {}
 
-    def detect_bright_points(self, frame_gray: "np.ndarray") -> list[tuple[int, int]]:
+    def detect_bright_points(self, frame_gray) -> list[tuple[int, int]]:
         """Find bright point sources in frame.
 
         Args:

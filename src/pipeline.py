@@ -10,7 +10,6 @@ Supports:
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from queue import Queue, Empty
 from typing import Optional, Callable
 
@@ -20,7 +19,7 @@ import numpy as np
 from .dual_tpu import DualEdgeTPU
 from .camera import Frame, MultiCameraManager, CameraConfig
 from .tracker import (
-    IoUTracker, CentroidTracker, Track, BoundingBox,
+    IoUTracker, CentroidTracker, BoundingBox,
     detections_to_boxes
 )
 

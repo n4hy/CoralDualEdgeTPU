@@ -23,12 +23,12 @@ import cv2
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src import (
-    AxisCamera, EmpireTechPTZ, CameraConfig, MultiCameraManager,
+    AxisCamera,
     DualTPUPipeline, LivePipeline
 )
 from src.output import (
-    EventPublisher, ObjectFilter, MQTTOutput, WebhookOutput,
-    DetectionEvent, SatelliteDetector
+    EventPublisher, ObjectFilter,
+    DetectionEvent
 )
 
 

@@ -73,7 +73,7 @@ def check_camera(ip: str) -> bool:
             capture_output=True, timeout=5
         )
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 

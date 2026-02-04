@@ -1,9 +1,11 @@
 """Dual Coral Edge TPU interface package."""
-from .dual_tpu import (
+from .dual_tpu import (  # noqa: F401
     DualEdgeTPU, TPUDevice, BBox, DetectionResult, ClassResult,
     list_edge_tpus, make_interpreter, check_tpu_status
 )
-from .camera import AxisCamera, EmpireTechPTZ, CameraConfig, MultiCameraManager, Frame
+from .camera import (  # noqa: F401
+    AxisCamera, EmpireTechPTZ, CameraConfig, MultiCameraManager, Frame
+)
 from .tracker import (
     BoundingBox, Track, CentroidTracker, IoUTracker,
     detections_to_boxes

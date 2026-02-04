@@ -9,6 +9,7 @@ app = Flask(__name__)
 
 CAMERA_URL = 'rtsp://admin:Admin123!@192.168.1.108/cam/realmonitor?channel=1&subtype=0'
 
+
 def generate_frames():
     """Generate MJPEG frames from camera."""
     cap = cv2.VideoCapture(CAMERA_URL, cv2.CAP_FFMPEG)
@@ -36,6 +37,7 @@ def generate_frames():
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
+
 @app.route('/')
 def index():
     return '''
@@ -47,10 +49,12 @@ def index():
     </html>
     '''
 
+
 @app.route('/stream')
 def stream():
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 if __name__ == '__main__':
     print("Starting PTZ camera stream server...")
