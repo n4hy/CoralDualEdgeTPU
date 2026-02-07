@@ -307,7 +307,7 @@ class PTZCameraGUI:
 
         ttk.Label(zoom_row, text="Zoom:").pack(side=tk.LEFT)
         self.var_zoom = tk.DoubleVar(value=1.0)
-        ttk.Spinbox(zoom_row, from_=1.0, to=25.0, increment=0.5,
+        ttk.Spinbox(zoom_row, from_=1.0, to=14.0, increment=0.5,
                     textvariable=self.var_zoom, width=5).pack(side=tk.LEFT, padx=5)
         ttk.Label(zoom_row, text="x").pack(side=tk.LEFT)
         ttk.Button(zoom_row, text="Set Zoom", width=10,
@@ -707,8 +707,8 @@ class PTZCameraGUI:
             return
 
         zoom = self.var_zoom.get()
-        if not (1.0 <= zoom <= 25.0):
-            messagebox.showerror("Invalid Input", "Zoom must be 1-25x")
+        if not (1.0 <= zoom <= 14.0):
+            messagebox.showerror("Invalid Input", "Zoom must be 1.0-14.0x")
             return
 
         print(f"[PTZ] Setting zoom to {zoom}x")
@@ -726,7 +726,7 @@ class PTZCameraGUI:
     def _zoom_step(self, direction: int):
         """Step zoom level up or down by 0.5x."""
         current = self.var_zoom.get()
-        new_val = max(1.0, min(25.0, current + direction * 0.5))
+        new_val = max(1.0, min(14.0, current + direction * 0.5))
         self.var_zoom.set(new_val)
         self._on_set_zoom()
 

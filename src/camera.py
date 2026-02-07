@@ -280,6 +280,22 @@ class EmpireTechPTZ(AxisCamera):
     RES_1080P = "1920x1080"
     RES_720P = "1280x720"
 
+    # Zoom scale: PositionABS arg3 range is 0-128, mapping to 1.0x-14.4x
+    ZOOM_ARG3_MAX = 128
+    ZOOM_X_MIN = 1.0
+    ZOOM_X_MAX = 14.4
+
+    @staticmethod
+    def zoom_x_to_arg3(zoom_x: float) -> int:
+        """Convert zoom multiplier (1.0-14.4x) to PositionABS arg3 (0-128)."""
+        arg3 = (zoom_x - 1.0) * 128.0 / 13.4
+        return max(0, min(128, int(round(arg3))))
+
+    @staticmethod
+    def arg3_to_zoom_x(arg3: int) -> float:
+        """Convert PositionABS arg3 (0-128) to zoom multiplier (1.0-14.4x)."""
+        return arg3 * 13.4 / 128.0 + 1.0
+
     def __init__(self, config: CameraConfig):
         super().__init__(config)
         self._ptz_session = None
@@ -323,7 +339,7 @@ class EmpireTechPTZ(AxisCamera):
 
         # Read current zoom so we can preserve it
         pos = self.get_position()
-        current_zoom = int(pos[2]) if pos else 1
+        current_arg3 = self.zoom_x_to_arg3(pos[2]) if pos else 0
 
         try:
             # Continuous move command
@@ -336,7 +352,7 @@ class EmpireTechPTZ(AxisCamera):
                 "code": self._get_ptz_code(pan, tilt, zoom),
                 "arg1": move_speed,
                 "arg2": move_speed,
-                "arg3": current_zoom
+                "arg3": current_arg3
             }
 
             auth = None
@@ -357,7 +373,7 @@ class EmpireTechPTZ(AxisCamera):
 
         # Read current zoom so we can preserve it
         pos = self.get_position()
-        current_zoom = int(pos[2]) if pos else 1
+        current_arg3 = self.zoom_x_to_arg3(pos[2]) if pos else 0
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
@@ -373,7 +389,7 @@ class EmpireTechPTZ(AxisCamera):
                 "code": "Up",
                 "arg1": 0,
                 "arg2": 0,
-                "arg3": current_zoom
+                "arg3": current_arg3
             }
             r1 = requests.get(url, params=params, auth=auth, timeout=2)
 
@@ -679,7 +695,7 @@ class EmpireTechPTZ(AxisCamera):
 
         # Read current zoom so we can preserve it
         pos = self.get_position()
-        current_zoom = int(pos[2]) if pos else 1
+        current_arg3 = self.zoom_x_to_arg3(pos[2]) if pos else 0
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
@@ -689,7 +705,7 @@ class EmpireTechPTZ(AxisCamera):
                 "code": "PositionABS",
                 "arg1": int(azimuth),
                 "arg2": int(elevation),
-                "arg3": current_zoom,
+                "arg3": current_arg3,
             }
 
             auth = None
@@ -714,7 +730,7 @@ class EmpireTechPTZ(AxisCamera):
         Reads current az/el, then sends PositionABS with only zoom changed.
 
         Args:
-            zoom: Target zoom level (1-25x)
+            zoom: Target zoom level (1.0-14.4x multiplier)
             wait: If True, wait for camera to finish zooming
 
         Returns:
@@ -729,6 +745,7 @@ class EmpireTechPTZ(AxisCamera):
             return False
 
         az, el, _ = pos
+        zoom_arg3 = self.zoom_x_to_arg3(zoom)
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
@@ -738,7 +755,7 @@ class EmpireTechPTZ(AxisCamera):
                 "code": "PositionABS",
                 "arg1": int(az),
                 "arg2": int(el),
-                "arg3": int(zoom)
+                "arg3": zoom_arg3
             }
 
             auth = None
