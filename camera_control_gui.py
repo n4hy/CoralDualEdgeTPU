@@ -575,21 +575,34 @@ class PTZCameraGUI:
             ).start()
 
     def _read_flip_state(self):
-        """Read flip setting from camera and set checkbox to match."""
+        """Read flip from camera. If not flipped, flip it. Then set checkbox."""
         if not self._camera:
             return
 
-        def fetch_flip():
+        def fetch_and_ensure_flip():
             flip = self._camera.get_flip()
-            if flip is not None:
-                self.var_flip.set(flip)
-                print(f"[GUI] Camera flip: {flip}")
+            if flip is None:
+                return
+            if not flip:
+                # Camera not flipped — set it (upside-down mount)
+                print("[GUI] Camera not flipped, setting flip=true")
+                self._camera.set_flip(True)
+                flip = True
+            # Now set checkbox to match camera state
+            self.root.after(0, lambda: self._set_flip_var(flip))
 
-        threading.Thread(target=fetch_flip, daemon=True).start()
+        threading.Thread(target=fetch_and_ensure_flip, daemon=True).start()
+
+    def _set_flip_var(self, value: bool):
+        """Set flip checkbox from camera state (main thread, no callback)."""
+        self._flip_updating = True
+        self.var_flip.set(value)
+        self._flip_updating = False
+        print(f"[GUI] Camera flip: {value}")
 
     def _on_flip_changed(self):
-        """Send flip setting to camera when checkbox is toggled."""
-        if not self._camera:
+        """Send flip setting to camera when checkbox is toggled by user."""
+        if not self._camera or getattr(self, '_flip_updating', False):
             return
 
         enabled = self.var_flip.get()
