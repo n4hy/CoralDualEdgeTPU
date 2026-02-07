@@ -17,6 +17,9 @@ from .output import (
     EventPublisher, ObjectFilter, MQTTOutput, WebhookOutput,
     DetectionEvent, SatelliteDetector
 )
+from .sky_calibration import (
+    CameraCalibrator, StarCatalog, CalibrationResult
+)
 
 __all__ = [
     # TPU
@@ -35,4 +38,6 @@ __all__ = [
     # Output
     "EventPublisher", "ObjectFilter", "MQTTOutput", "WebhookOutput",
     "DetectionEvent", "SatelliteDetector",
+    # Sky Calibration
+    "CameraCalibrator", "StarCatalog", "CalibrationResult",
 ]
