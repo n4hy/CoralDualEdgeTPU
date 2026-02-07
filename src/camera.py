@@ -491,6 +491,69 @@ class EmpireTechPTZ(AxisCamera):
             print(f"[{self.config.name}] Zoom error: {e}")
             return False
 
+    def get_flip(self) -> Optional[bool]:
+        """Read the camera's internal Flip setting.
+
+        Returns:
+            True if flip is enabled, False if disabled, None on error.
+        """
+        import requests
+        from requests.auth import HTTPDigestAuth
+
+        try:
+            url = f"http://{self._get_ip()}/cgi-bin/configManager.cgi"
+            params = {"action": "getConfig", "name": "VideoInOptions"}
+
+            auth = None
+            if self.config.username:
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=5)
+            if response.status_code != 200:
+                return None
+
+            for line in response.text.split('\n'):
+                if line.strip().endswith('.Flip=true') or line.strip().endswith('.Flip=false'):
+                    if 'NightOptions' not in line and 'NormalOptions' not in line:
+                        return 'true' in line
+            return None
+
+        except Exception as e:
+            print(f"[{self.config.name}] Get flip error: {e}")
+            return None
+
+    def set_flip(self, enabled: bool) -> bool:
+        """Set the camera's internal Flip (for upside-down mount).
+
+        Flips image inside the camera so OSD text stays readable.
+
+        Args:
+            enabled: True to flip, False for normal orientation.
+
+        Returns:
+            True if applied successfully.
+        """
+        import requests
+        from requests.auth import HTTPDigestAuth
+
+        try:
+            url = f"http://{self._get_ip()}/cgi-bin/configManager.cgi"
+            params = {
+                "action": "setConfig",
+                "VideoInOptions[0].Flip": "true" if enabled else "false"
+            }
+
+            auth = None
+            if self.config.username:
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=5)
+            return response.status_code == 200 and 'OK' in response.text
+
+        except Exception as e:
+            print(f"[{self.config.name}] Set flip error: {e}")
+            return False
+
     def get_position(self) -> Optional[tuple]:
         """Get current PTZ position.
 

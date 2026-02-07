@@ -245,10 +245,11 @@ class PTZCameraGUI:
         ttk.Radiobutton(row, text="Main (4MP)", variable=self.var_stream, value="main").pack(side=tk.LEFT)
         ttk.Radiobutton(row, text="Sub (720p)", variable=self.var_stream, value="sub").pack(side=tk.LEFT, padx=5)
 
-        # Flip video (default ON for upside-down mount)
-        self.var_flip = tk.BooleanVar(value=True)
+        # Flip video — reads/writes camera internal setting, no software flip
+        self.var_flip = tk.BooleanVar(value=False)
         ttk.Checkbutton(conn_frame, text="Flip video (upside-down mount)",
-                        variable=self.var_flip).pack(fill=tk.X, pady=2)
+                        variable=self.var_flip,
+                        command=self._on_flip_changed).pack(fill=tk.X, pady=2)
 
         # Connect/Disconnect buttons
         btn_row = ttk.Frame(conn_frame)
@@ -484,6 +485,7 @@ class PTZCameraGUI:
             self.lbl_status.config(text="● Connected", foreground='green')
             # Read current camera state into controls without disturbing it
             self._update_position()
+            self._read_flip_state()
         elif self._video.error:
             print(f"[GUI] Connection failed: {self._video.error}")
             self.btn_connect.config(state=tk.NORMAL)
@@ -571,6 +573,30 @@ class PTZCameraGUI:
                 args=(preset,),
                 daemon=True
             ).start()
+
+    def _read_flip_state(self):
+        """Read flip setting from camera and set checkbox to match."""
+        if not self._camera:
+            return
+
+        def fetch_flip():
+            flip = self._camera.get_flip()
+            if flip is not None:
+                self.var_flip.set(flip)
+                print(f"[GUI] Camera flip: {flip}")
+
+        threading.Thread(target=fetch_flip, daemon=True).start()
+
+    def _on_flip_changed(self):
+        """Send flip setting to camera when checkbox is toggled."""
+        if not self._camera:
+            return
+
+        enabled = self.var_flip.get()
+        print(f"[GUI] Setting camera flip to {enabled}")
+        threading.Thread(
+            target=self._camera.set_flip, args=(enabled,), daemon=True
+        ).start()
 
     def _update_position(self):
         """Update current position display."""
@@ -742,8 +768,6 @@ class PTZCameraGUI:
             frame = self._video.get_frame()
 
             if frame is not None:
-                if self.var_flip.get():
-                    frame = cv2.flip(frame, -1)
 
                 # Update info labels
                 w, h = self._video.resolution
