@@ -168,6 +168,7 @@ class PTZCameraGUI:
         self._rec_start_time: Optional[float] = None
         self._rec_duration: int = 0
         self._rec_file: str = ""
+        self._software_flip: bool = False
 
         # Style
         self.style = ttk.Style()
@@ -483,9 +484,8 @@ class PTZCameraGUI:
             print("[GUI] Connected successfully")
             self.btn_disconnect.config(state=tk.NORMAL)
             self.lbl_status.config(text="● Connected", foreground='green')
-            # Read current camera state into controls without disturbing it
-            self._update_position()
-            self._read_flip_state()
+            # Read all camera state in one thread, update UI atomically
+            self._sync_camera_state()
         elif self._video.error:
             print(f"[GUI] Connection failed: {self._video.error}")
             self.btn_connect.config(state=tk.NORMAL)
@@ -574,42 +574,82 @@ class PTZCameraGUI:
                 daemon=True
             ).start()
 
-    def _read_flip_state(self):
-        """Read flip from camera. If not flipped, flip it. Then set checkbox."""
+    def _sync_camera_state(self):
+        """Read all camera state in one thread, update UI once when done.
+
+        Gathers position and OSD state, then applies to UI atomically.
+        For upside-down mount: disables OSD and enables software flip.
+        """
         if not self._camera:
             return
 
-        def fetch_and_ensure_flip():
-            flip = self._camera.get_flip()
-            if flip is None:
-                return
-            if not flip:
-                # Camera not flipped — set it (upside-down mount)
-                print("[GUI] Camera not flipped, setting flip=true")
-                self._camera.set_flip(True)
-                flip = True
-            # Now set checkbox to match camera state
-            self.root.after(0, lambda: self._set_flip_var(flip))
+        self._state_syncing = True
 
-        threading.Thread(target=fetch_and_ensure_flip, daemon=True).start()
+        def do_sync():
+            pos = self._camera.get_position()
+            # For upside-down mount: disable OSD, enable software flip
+            osd_on = self._camera.get_osd_enabled()
+            if osd_on is None:
+                osd_on = True  # Assume OSD on if can't read
+            # If OSD is on, camera is in normal mode (no software flip)
+            # If OSD is off, camera is in flipped mode (software flip active)
+            flip_active = not osd_on
+            if not flip_active:
+                # Default to flipped for upside-down mount
+                print("[GUI] Enabling flip for upside-down mount")
+                ok = self._camera.set_osd_enabled(False)
+                if ok:
+                    flip_active = True
+                    print("[GUI] OSD disabled, verified")
+                else:
+                    print("[GUI] Failed to disable OSD")
+            self.root.after_idle(
+                lambda: self._apply_camera_state(pos, flip_active))
 
-    def _set_flip_var(self, value: bool):
-        """Set flip checkbox from camera state (main thread, no callback)."""
-        self._flip_updating = True
-        self.var_flip.set(value)
-        self._flip_updating = False
-        print(f"[GUI] Camera flip: {value}")
+        threading.Thread(target=do_sync, daemon=True).start()
+
+    def _apply_camera_state(self, pos, flip_active):
+        """Apply fetched camera state to UI (main thread only)."""
+        if pos:
+            az, el, zoom = pos
+            self.lbl_cur_pos.config(
+                text=f"Az: {az:.1f}°  El: {el:.1f}°  Zm: {zoom:.1f}x")
+            self.var_azimuth.set(round(az, 1))
+            self.var_elevation.set(round(el, 1))
+            self.var_zoom.set(round(zoom, 1))
+        self.var_flip.set(flip_active)
+        self._software_flip = flip_active
+        print(f"[GUI] Flip synced: {flip_active}")
+        self._state_syncing = False
 
     def _on_flip_changed(self):
-        """Send flip setting to camera when checkbox is toggled by user."""
-        if not self._camera or getattr(self, '_flip_updating', False):
+        """Toggle flip: disable/enable OSD in camera, toggle software flip.
+
+        Does not return until camera confirms the OSD change.
+        """
+        if not self._camera:
+            return
+        if getattr(self, '_state_syncing', False):
             return
 
         enabled = self.var_flip.get()
-        print(f"[GUI] Setting camera flip to {enabled}")
-        threading.Thread(
-            target=self._camera.set_flip, args=(enabled,), daemon=True
-        ).start()
+        print(f"[GUI] Setting flip to {enabled}")
+
+        def do_flip():
+            # Flip ON = OSD off + software flip
+            # Flip OFF = OSD on + no software flip
+            ok = self._camera.set_osd_enabled(not enabled)
+            if ok:
+                self._software_flip = enabled
+                print(f"[GUI] Flip {'enabled' if enabled else 'disabled'}, "
+                      f"OSD {'off' if enabled else 'on'}, verified")
+            else:
+                # Revert checkbox
+                print(f"[GUI] Flip change FAILED, reverting checkbox")
+                self.root.after_idle(
+                    lambda: self.var_flip.set(not enabled))
+
+        threading.Thread(target=do_flip, daemon=True).start()
 
     def _update_position(self):
         """Update current position display."""
@@ -623,7 +663,6 @@ class PTZCameraGUI:
                 az, el, zoom = pos
                 self.lbl_cur_pos.config(
                     text=f"Az: {az:.1f}°  El: {el:.1f}°  Zm: {zoom:.1f}x")
-                # Also update input fields to current position
                 self.var_azimuth.set(round(az, 1))
                 self.var_elevation.set(round(el, 1))
                 self.var_zoom.set(round(zoom, 1))
@@ -771,6 +810,31 @@ class PTZCameraGUI:
         self.btn_record.config(state=tk.NORMAL)
         self.btn_rec_stop.config(state=tk.DISABLED)
 
+    def _draw_osd(self, frame: np.ndarray) -> None:
+        """Draw timestamp and camera name on frame (replaces camera OSD)."""
+        h, w = frame.shape[:2]
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = max(0.5, w / 1920)
+        thickness = max(1, int(scale * 2))
+
+        # Timestamp — top right
+        (tw, th), _ = cv2.getTextSize(ts, font, scale, thickness)
+        x_ts = w - tw - 10
+        y_ts = th + 10
+        cv2.putText(frame, ts, (x_ts, y_ts), font, scale,
+                    (0, 0, 0), thickness + 2, cv2.LINE_AA)
+        cv2.putText(frame, ts, (x_ts, y_ts), font, scale,
+                    (255, 255, 255), thickness, cv2.LINE_AA)
+
+        # Camera name — bottom left
+        name = "IP PTZ Camera"
+        y_name = h - 10
+        cv2.putText(frame, name, (10, y_name), font, scale,
+                    (0, 0, 0), thickness + 2, cv2.LINE_AA)
+        cv2.putText(frame, name, (10, y_name), font, scale,
+                    (255, 255, 255), thickness, cv2.LINE_AA)
+
     def _start_video_loop(self):
         """Start the video update loop."""
         self._update_video()
@@ -781,6 +845,10 @@ class PTZCameraGUI:
             frame = self._video.get_frame()
 
             if frame is not None:
+                if self._software_flip:
+                    frame = cv2.flip(frame, -1)
+                    # Draw our own OSD since camera OSD is disabled
+                    self._draw_osd(frame)
 
                 # Update info labels
                 w, h = self._video.resolution

@@ -491,18 +491,18 @@ class EmpireTechPTZ(AxisCamera):
             print(f"[{self.config.name}] Zoom error: {e}")
             return False
 
-    def get_flip(self) -> Optional[bool]:
-        """Read the camera's internal Flip setting.
+    def get_osd_enabled(self) -> Optional[bool]:
+        """Read whether camera OSD overlays are enabled.
 
         Returns:
-            True if flip is enabled, False if disabled, None on error.
+            True if OSD is on, False if off, None on error.
         """
         import requests
         from requests.auth import HTTPDigestAuth
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/configManager.cgi"
-            params = {"action": "getConfig", "name": "VideoInOptions"}
+            params = {"action": "getConfig", "name": "VideoWidget"}
 
             auth = None
             if self.config.username:
@@ -513,45 +513,58 @@ class EmpireTechPTZ(AxisCamera):
                 return None
 
             for line in response.text.split('\n'):
-                if line.strip().endswith('.Flip=true') or line.strip().endswith('.Flip=false'):
-                    if 'NightOptions' not in line and 'NormalOptions' not in line:
-                        return 'true' in line
+                if 'ChannelTitle.EncodeBlend=' in line:
+                    return 'true' in line
             return None
 
         except Exception as e:
-            print(f"[{self.config.name}] Get flip error: {e}")
+            print(f"[{self.config.name}] Get OSD error: {e}")
             return None
 
-    def set_flip(self, enabled: bool) -> bool:
-        """Set the camera's internal Flip (for upside-down mount).
+    def set_osd_enabled(self, enabled: bool) -> bool:
+        """Enable or disable camera OSD text overlays.
 
-        Flips image inside the camera so OSD text stays readable.
+        Controls both channel title and timestamp. Verifies the
+        setting took effect before returning.
 
         Args:
-            enabled: True to flip, False for normal orientation.
+            enabled: True to show OSD, False to hide.
 
         Returns:
-            True if applied successfully.
+            True if verified successfully.
         """
         import requests
         from requests.auth import HTTPDigestAuth
 
+        val = "true" if enabled else "false"
+
         try:
             url = f"http://{self._get_ip()}/cgi-bin/configManager.cgi"
-            params = {
-                "action": "setConfig",
-                "VideoInOptions[0].Flip": "true" if enabled else "false"
-            }
-
             auth = None
             if self.config.username:
                 auth = HTTPDigestAuth(self.config.username, self.config.password)
 
-            response = requests.get(url, params=params, auth=auth, timeout=5)
-            return response.status_code == 200 and 'OK' in response.text
+            # Set both channel title and timestamp
+            for key in ["ChannelTitle.EncodeBlend", "TimeTitle.EncodeBlend"]:
+                r = requests.get(url, params={
+                    "action": "setConfig",
+                    f"VideoWidget[0].{key}": val
+                }, auth=auth, timeout=5)
+                if r.status_code != 200 or 'OK' not in r.text:
+                    print(f"[{self.config.name}] Set {key}={val} failed")
+                    return False
+
+            # Verify the change took effect
+            actual = self.get_osd_enabled()
+            if actual != enabled:
+                print(f"[{self.config.name}] OSD verify failed: "
+                      f"expected {enabled}, got {actual}")
+                return False
+
+            return True
 
         except Exception as e:
-            print(f"[{self.config.name}] Set flip error: {e}")
+            print(f"[{self.config.name}] Set OSD error: {e}")
             return False
 
     def get_position(self) -> Optional[tuple]:
