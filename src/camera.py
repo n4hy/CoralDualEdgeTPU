@@ -579,7 +579,8 @@ class EmpireTechPTZ(AxisCamera):
                       wait: bool = True) -> bool:
         """Move to absolute azimuth/elevation using PositionABS command.
 
-        Does NOT send zoom. Use set_zoom_abs() for zoom control.
+        Reads current zoom first and sends it back unchanged so the
+        camera doesn't reset zoom when repositioning.
 
         Args:
             azimuth: Target azimuth in degrees (0-360)
@@ -592,6 +593,10 @@ class EmpireTechPTZ(AxisCamera):
         import requests
         from requests.auth import HTTPDigestAuth
 
+        # Read current zoom so we can preserve it
+        pos = self.get_position()
+        current_zoom = int(pos[2]) if pos else 1
+
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
             params = {
@@ -600,6 +605,7 @@ class EmpireTechPTZ(AxisCamera):
                 "code": "PositionABS",
                 "arg1": int(azimuth),
                 "arg2": int(elevation),
+                "arg3": current_zoom,
             }
 
             auth = None
