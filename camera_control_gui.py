@@ -245,6 +245,11 @@ class PTZCameraGUI:
         ttk.Radiobutton(row, text="Main (4MP)", variable=self.var_stream, value="main").pack(side=tk.LEFT)
         ttk.Radiobutton(row, text="Sub (720p)", variable=self.var_stream, value="sub").pack(side=tk.LEFT, padx=5)
 
+        # Flip video (default ON for upside-down mount)
+        self.var_flip = tk.BooleanVar(value=True)
+        ttk.Checkbutton(conn_frame, text="Flip video (upside-down mount)",
+                        variable=self.var_flip).pack(fill=tk.X, pady=2)
+
         # Connect/Disconnect buttons
         btn_row = ttk.Frame(conn_frame)
         btn_row.pack(fill=tk.X, pady=(10, 0))
@@ -737,8 +742,8 @@ class PTZCameraGUI:
             frame = self._video.get_frame()
 
             if frame is not None:
-                # Note: Camera has Flip=true set for upside-down mount
-                # No software flip needed
+                if self.var_flip.get():
+                    frame = cv2.flip(frame, -1)
 
                 # Update info labels
                 w, h = self._video.resolution
