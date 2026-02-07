@@ -321,6 +321,10 @@ class EmpireTechPTZ(AxisCamera):
         import requests
         from requests.auth import HTTPDigestAuth
 
+        # Read current zoom so we can preserve it
+        pos = self.get_position()
+        current_zoom = int(pos[2]) if pos else 1
+
         try:
             # Continuous move command
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
@@ -332,7 +336,7 @@ class EmpireTechPTZ(AxisCamera):
                 "code": self._get_ptz_code(pan, tilt, zoom),
                 "arg1": move_speed,
                 "arg2": move_speed,
-                "arg3": 0
+                "arg3": current_zoom
             }
 
             auth = None
@@ -351,6 +355,10 @@ class EmpireTechPTZ(AxisCamera):
         import requests
         from requests.auth import HTTPDigestAuth
 
+        # Read current zoom so we can preserve it
+        pos = self.get_position()
+        current_zoom = int(pos[2]) if pos else 1
+
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
 
@@ -365,7 +373,7 @@ class EmpireTechPTZ(AxisCamera):
                 "code": "Up",
                 "arg1": 0,
                 "arg2": 0,
-                "arg3": 0
+                "arg3": current_zoom
             }
             r1 = requests.get(url, params=params, auth=auth, timeout=2)
 
