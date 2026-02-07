@@ -400,30 +400,39 @@ class PTZCameraGUI:
             ttk.Label(row, text=action).pack(side=tk.LEFT)
 
     def _create_bindings(self):
-        """Set up keyboard bindings."""
-        # Arrow keys for PTZ - bind_all ensures it works even when Entry has focus
-        self.root.bind_all('<KeyPress-Up>', lambda e: self._on_ptz(0, 1, 0))
-        self.root.bind_all('<KeyPress-Down>', lambda e: self._on_ptz(0, -1, 0))
-        self.root.bind_all('<KeyPress-Left>', lambda e: self._on_ptz(-1, 0, 0))
-        self.root.bind_all('<KeyPress-Right>', lambda e: self._on_ptz(1, 0, 0))
+        """Set up keyboard bindings.
 
-        self.root.bind_all('<KeyRelease-Up>', lambda e: self._on_stop())
-        self.root.bind_all('<KeyRelease-Down>', lambda e: self._on_stop())
-        self.root.bind_all('<KeyRelease-Left>', lambda e: self._on_stop())
-        self.root.bind_all('<KeyRelease-Right>', lambda e: self._on_stop())
+        All hotkeys are suppressed when an Entry or Spinbox has focus
+        so typing numbers into input fields never triggers PTZ commands.
+        """
+        def _in_entry(event) -> bool:
+            """Return True if the event came from a text input widget."""
+            w = event.widget
+            return isinstance(w, (tk.Entry, ttk.Entry, tk.Spinbox, ttk.Spinbox))
 
-        # Zoom step (absolute, not continuous)
-        self.root.bind_all('<KeyPress-plus>', lambda e: self._zoom_step(1))
-        self.root.bind_all('<KeyPress-minus>', lambda e: self._zoom_step(-1))
-        self.root.bind_all('<KeyPress-equal>', lambda e: self._zoom_step(1))
+        # Arrow keys for PTZ
+        self.root.bind_all('<KeyPress-Up>', lambda e: None if _in_entry(e) else self._on_ptz(0, 1, 0))
+        self.root.bind_all('<KeyPress-Down>', lambda e: None if _in_entry(e) else self._on_ptz(0, -1, 0))
+        self.root.bind_all('<KeyPress-Left>', lambda e: None if _in_entry(e) else self._on_ptz(-1, 0, 0))
+        self.root.bind_all('<KeyPress-Right>', lambda e: None if _in_entry(e) else self._on_ptz(1, 0, 0))
+
+        self.root.bind_all('<KeyRelease-Up>', lambda e: None if _in_entry(e) else self._on_stop())
+        self.root.bind_all('<KeyRelease-Down>', lambda e: None if _in_entry(e) else self._on_stop())
+        self.root.bind_all('<KeyRelease-Left>', lambda e: None if _in_entry(e) else self._on_stop())
+        self.root.bind_all('<KeyRelease-Right>', lambda e: None if _in_entry(e) else self._on_stop())
+
+        # Zoom step
+        self.root.bind_all('<KeyPress-plus>', lambda e: None if _in_entry(e) else self._zoom_step(1))
+        self.root.bind_all('<KeyPress-minus>', lambda e: None if _in_entry(e) else self._zoom_step(-1))
+        self.root.bind_all('<KeyPress-equal>', lambda e: None if _in_entry(e) else self._zoom_step(1))
 
         # Stop
-        self.root.bind('<space>', lambda e: self._on_stop())
-        self.root.bind('<Escape>', lambda e: self._on_stop())
+        self.root.bind_all('<space>', lambda e: None if _in_entry(e) else self._on_stop())
+        self.root.bind_all('<Escape>', lambda e: None if _in_entry(e) else self._on_stop())
 
         # Quick presets
         for i in range(1, 9):
-            self.root.bind(f'<Key-{i}>', lambda e, p=i: self._on_goto_preset(p))
+            self.root.bind_all(f'<Key-{i}>', lambda e, p=i: None if _in_entry(e) else self._on_goto_preset(p))
 
         # Window close
         self.root.protocol('WM_DELETE_WINDOW', self._on_quit)
