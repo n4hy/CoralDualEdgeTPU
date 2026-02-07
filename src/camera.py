@@ -347,13 +347,18 @@ class EmpireTechPTZ(AxisCamera):
             return False
 
     def ptz_stop(self) -> bool:
-        """Stop PTZ movement by sending zero-speed command."""
+        """Stop all PTZ movement including zoom."""
         import requests
         from requests.auth import HTTPDigestAuth
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
-            # Send movement with 0 speed to stop
+
+            auth = None
+            if self.config.username:
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
+
+            # Stop pan/tilt
             params = {
                 "action": "start",
                 "channel": 1,
@@ -362,13 +367,13 @@ class EmpireTechPTZ(AxisCamera):
                 "arg2": 0,
                 "arg3": 0
             }
+            r1 = requests.get(url, params=params, auth=auth, timeout=2)
 
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
+            # Stop zoom
+            params["code"] = "ZoomTele"
+            r2 = requests.get(url, params=params, auth=auth, timeout=2)
 
-            response = requests.get(url, params=params, auth=auth, timeout=2)
-            return response.status_code == 200
+            return r1.status_code == 200 and r2.status_code == 200
 
         except Exception as e:
             print(f"[{self.config.name}] PTZ stop error: {e}")
@@ -571,12 +576,14 @@ class EmpireTechPTZ(AxisCamera):
         return False
 
     def goto_position(self, azimuth: float, elevation: float,
+                      zoom: Optional[float] = None,
                       wait: bool = True) -> bool:
-        """Move to absolute azimuth/elevation using PositionABS command.
+        """Move to absolute azimuth/elevation/zoom using PositionABS command.
 
         Args:
             azimuth: Target azimuth in degrees (0-360)
             elevation: Target elevation in degrees (0-90, 0=horizon, 90=up)
+            zoom: Target zoom level (1.0-25.0x), or None to keep current zoom
             wait: If True, wait for camera to reach position
 
         Returns:
@@ -593,7 +600,7 @@ class EmpireTechPTZ(AxisCamera):
                 "code": "PositionABS",
                 "arg1": int(azimuth),
                 "arg2": int(elevation),
-                "arg3": 0
+                "arg3": int(zoom * 100) if zoom is not None else 0
             }
 
             auth = None

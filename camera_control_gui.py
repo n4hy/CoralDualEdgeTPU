@@ -19,9 +19,11 @@ Usage:
     python camera_control_gui.py
 """
 
+import subprocess
 import threading
 import time
 import tkinter as tk
+from datetime import datetime
 from tkinter import ttk, messagebox
 from typing import Optional
 
@@ -162,6 +164,10 @@ class PTZCameraGUI:
         self._camera: Optional[EmpireTechPTZ] = None
         self._video = VideoStream()
         self._update_job: Optional[str] = None
+        self._rec_process: Optional[subprocess.Popen] = None
+        self._rec_start_time: Optional[float] = None
+        self._rec_duration: int = 0
+        self._rec_file: str = ""
 
         # Style
         self.style = ttk.Style()
@@ -288,17 +294,17 @@ class PTZCameraGUI:
                 # Use command for simple click instead of press/release bindings
                 btn.configure(command=lambda p=ptz: self._ptz_click(*p))
 
-        # Zoom buttons
+        # Absolute zoom control
         zoom_row = ttk.Frame(ptz_frame)
         zoom_row.pack(fill=tk.X, pady=(10, 0))
 
-        btn_zout = ttk.Button(zoom_row, text="Zoom −", width=10,
-                              command=lambda: self._ptz_click(0, 0, -1))
-        btn_zout.pack(side=tk.LEFT, expand=True)
-
-        btn_zin = ttk.Button(zoom_row, text="Zoom +", width=10,
-                             command=lambda: self._ptz_click(0, 0, 1))
-        btn_zin.pack(side=tk.RIGHT, expand=True)
+        ttk.Label(zoom_row, text="Zoom:").pack(side=tk.LEFT)
+        self.var_zoom = tk.DoubleVar(value=1.0)
+        ttk.Spinbox(zoom_row, from_=1.0, to=25.0, increment=0.5,
+                    textvariable=self.var_zoom, width=5).pack(side=tk.LEFT, padx=5)
+        ttk.Label(zoom_row, text="x").pack(side=tk.LEFT)
+        ttk.Button(zoom_row, text="Set Zoom", width=10,
+                   command=self._on_set_zoom).pack(side=tk.RIGHT)
 
         # --- Absolute Position Section ---
         pos_frame = ttk.LabelFrame(ctrl_frame, text="Absolute Position", padding=10)
@@ -354,13 +360,36 @@ class PTZCameraGUI:
             btn = ttk.Button(quick_row, text=str(i), width=3, command=lambda p=i: self._on_goto_preset(p))
             btn.pack(side=tk.LEFT, padx=2)
 
+        # --- Recording Section ---
+        rec_frame = ttk.LabelFrame(ctrl_frame, text="Recording", padding=10)
+        rec_frame.pack(fill=tk.X, pady=(0, 10))
+
+        dur_row = ttk.Frame(rec_frame)
+        dur_row.pack(fill=tk.X, pady=2)
+        ttk.Label(dur_row, text="Duration:", width=10).pack(side=tk.LEFT)
+        self.var_duration = tk.IntVar(value=30)
+        ttk.Spinbox(dur_row, from_=1, to=3600, textvariable=self.var_duration,
+                    width=6).pack(side=tk.LEFT, padx=5)
+        ttk.Label(dur_row, text="seconds").pack(side=tk.LEFT)
+
+        btn_row = ttk.Frame(rec_frame)
+        btn_row.pack(fill=tk.X, pady=(5, 0))
+        self.btn_record = ttk.Button(btn_row, text="Record", command=self._on_record)
+        self.btn_record.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
+        self.btn_rec_stop = ttk.Button(btn_row, text="Stop", command=self._on_rec_stop,
+                                       state=tk.DISABLED)
+        self.btn_rec_stop.pack(side=tk.LEFT, expand=True, fill=tk.X)
+
+        self.lbl_rec_status = ttk.Label(rec_frame, text="")
+        self.lbl_rec_status.pack(fill=tk.X, pady=(5, 0))
+
         # --- Keyboard Shortcuts ---
         help_frame = ttk.LabelFrame(ctrl_frame, text="Keyboard Shortcuts", padding=10)
         help_frame.pack(fill=tk.X)
 
         shortcuts = [
             ("Arrow Keys", "Pan/Tilt"),
-            ("+ / −", "Zoom"),
+            ("+ / −", "Zoom step"),
             ("Space / Esc", "Stop"),
             ("1-8", "Presets"),
         ]
@@ -383,13 +412,10 @@ class PTZCameraGUI:
         self.root.bind_all('<KeyRelease-Left>', lambda e: self._on_stop())
         self.root.bind_all('<KeyRelease-Right>', lambda e: self._on_stop())
 
-        # Zoom
-        self.root.bind_all('<KeyPress-plus>', lambda e: self._on_ptz(0, 0, 1))
-        self.root.bind_all('<KeyPress-minus>', lambda e: self._on_ptz(0, 0, -1))
-        self.root.bind_all('<KeyPress-equal>', lambda e: self._on_ptz(0, 0, 1))
-        self.root.bind_all('<KeyRelease-plus>', lambda e: self._on_stop())
-        self.root.bind_all('<KeyRelease-minus>', lambda e: self._on_stop())
-        self.root.bind_all('<KeyRelease-equal>', lambda e: self._on_stop())
+        # Zoom step (absolute, not continuous)
+        self.root.bind_all('<KeyPress-plus>', lambda e: self._zoom_step(1))
+        self.root.bind_all('<KeyPress-minus>', lambda e: self._zoom_step(-1))
+        self.root.bind_all('<KeyPress-equal>', lambda e: self._zoom_step(1))
 
         # Stop
         self.root.bind('<space>', lambda e: self._on_stop())
@@ -540,10 +566,12 @@ class PTZCameraGUI:
             pos = self._camera.get_position()
             if pos:
                 az, el, zoom = pos
-                self.lbl_cur_pos.config(text=f"Az: {az:.1f}°  El: {el:.1f}°")
+                self.lbl_cur_pos.config(
+                    text=f"Az: {az:.1f}°  El: {el:.1f}°  Zm: {zoom:.1f}x")
                 # Also update input fields to current position
                 self.var_azimuth.set(round(az, 1))
                 self.var_elevation.set(round(el, 1))
+                self.var_zoom.set(round(zoom, 1))
             else:
                 self.lbl_cur_pos.config(text="Az: --  El: --")
 
@@ -565,20 +593,131 @@ class PTZCameraGUI:
             messagebox.showerror("Invalid Input", "Elevation must be 0-90 degrees")
             return
 
-        print(f"[PTZ] Going to Az={az}°, El={el}°")
+        zoom = self.var_zoom.get()
+        print(f"[PTZ] Going to Az={az}°, El={el}°, Zoom={zoom}x")
         self.btn_goto.config(state=tk.DISABLED, text="Moving...")
 
         def do_goto():
             # goto_position with wait=True will block until camera stops moving
-            success = self._camera.goto_position(az, el, wait=True)
+            success = self._camera.goto_position(az, el, zoom=zoom, wait=True)
             self.btn_goto.config(state=tk.NORMAL, text="Go To Position")
             if success:
-                print(f"[PTZ] Reached Az={az}°, El={el}°")
+                print(f"[PTZ] Reached Az={az}°, El={el}°, Zoom={zoom}x")
                 self._update_position()
             else:
                 print("[PTZ] Failed or timed out")
 
         threading.Thread(target=do_goto, daemon=True).start()
+
+    def _on_set_zoom(self):
+        """Set camera zoom to the specified level."""
+        if not self._camera:
+            return
+
+        zoom = self.var_zoom.get()
+        if not (1.0 <= zoom <= 25.0):
+            messagebox.showerror("Invalid Input", "Zoom must be 1-25x")
+            return
+
+        print(f"[PTZ] Setting zoom to {zoom}x")
+
+        def do_zoom():
+            pos = self._camera.get_position()
+            if pos:
+                az, el, _ = pos
+                self._camera.goto_position(az, el, zoom=zoom, wait=True)
+                self._update_position()
+            else:
+                print("[PTZ] Could not get current position for zoom")
+
+        threading.Thread(target=do_zoom, daemon=True).start()
+
+    def _zoom_step(self, direction: int):
+        """Step zoom level up or down by 0.5x."""
+        current = self.var_zoom.get()
+        new_val = max(1.0, min(25.0, current + direction * 0.5))
+        self.var_zoom.set(new_val)
+        self._on_set_zoom()
+
+    def _on_record(self):
+        """Start recording RTSP stream to file."""
+        if not self._video.is_connected:
+            messagebox.showerror("Not Connected", "Connect to camera first")
+            return
+
+        duration = self.var_duration.get()
+        if duration < 1:
+            messagebox.showerror("Invalid Duration", "Duration must be at least 1 second")
+            return
+
+        import os
+        os.makedirs("recordings", exist_ok=True)
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._rec_file = f"recordings/ptz_{ts}.mp4"
+        self._rec_duration = duration
+
+        rtsp_url = self._get_rtsp_url()
+        cmd = [
+            "ffmpeg", "-y",
+            "-rtsp_transport", "tcp",
+            "-i", rtsp_url,
+            "-t", str(duration),
+            "-c", "copy",
+            self._rec_file
+        ]
+
+        print(f"[REC] Starting: {self._rec_file} ({duration}s)")
+        self._rec_process = subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        self._rec_start_time = time.time()
+
+        self.btn_record.config(state=tk.DISABLED)
+        self.btn_rec_stop.config(state=tk.NORMAL)
+        self._update_rec_status()
+
+    def _on_rec_stop(self):
+        """Stop recording early."""
+        if self._rec_process:
+            self._rec_process.terminate()
+            try:
+                self._rec_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self._rec_process.kill()
+            self._rec_process = None
+            print(f"[REC] Stopped early: {self._rec_file}")
+        self._rec_cleanup()
+
+    def _update_rec_status(self):
+        """Update recording elapsed time display."""
+        if self._rec_process is None:
+            return
+
+        ret = self._rec_process.poll()
+        if ret is not None:
+            self._rec_process = None
+            if ret == 0:
+                print(f"[REC] Complete: {self._rec_file}")
+                self.lbl_rec_status.config(
+                    text=f"Saved: {self._rec_file}", foreground='green')
+            else:
+                print(f"[REC] ffmpeg exited with code {ret}")
+                self.lbl_rec_status.config(
+                    text="Recording failed", foreground='red')
+            self._rec_cleanup()
+            return
+
+        elapsed = int(time.time() - self._rec_start_time)
+        self.lbl_rec_status.config(
+            text=f"Recording... {elapsed}s / {self._rec_duration}s",
+            foreground='red')
+        self.root.after(500, self._update_rec_status)
+
+    def _rec_cleanup(self):
+        """Reset recording UI state."""
+        self.btn_record.config(state=tk.NORMAL)
+        self.btn_rec_stop.config(state=tk.DISABLED)
 
     def _start_video_loop(self):
         """Start the video update loop."""
@@ -630,6 +769,8 @@ class PTZCameraGUI:
     def _on_quit(self):
         """Clean up and quit."""
         print("[GUI] Shutting down")
+        if self._rec_process:
+            self._rec_process.terminate()
         if self._update_job:
             self.root.after_cancel(self._update_job)
         self._video.stop()
