@@ -468,6 +468,8 @@ class PTZCameraGUI:
             print("[GUI] Connected successfully")
             self.btn_disconnect.config(state=tk.NORMAL)
             self.lbl_status.config(text="● Connected", foreground='green')
+            # Read current camera state into controls without disturbing it
+            self._update_position()
         elif self._video.error:
             print(f"[GUI] Connection failed: {self._video.error}")
             self.btn_connect.config(state=tk.NORMAL)
