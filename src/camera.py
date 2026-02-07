@@ -576,14 +576,14 @@ class EmpireTechPTZ(AxisCamera):
         return False
 
     def goto_position(self, azimuth: float, elevation: float,
-                      zoom: Optional[float] = None,
                       wait: bool = True) -> bool:
-        """Move to absolute azimuth/elevation/zoom using PositionABS command.
+        """Move to absolute azimuth/elevation using PositionABS command.
+
+        Does NOT send zoom. Use set_zoom_abs() for zoom control.
 
         Args:
             azimuth: Target azimuth in degrees (0-360)
             elevation: Target elevation in degrees (0-90, 0=horizon, 90=up)
-            zoom: Target zoom level (1.0-25.0x), or None to keep current zoom
             wait: If True, wait for camera to reach position
 
         Returns:
@@ -600,7 +600,6 @@ class EmpireTechPTZ(AxisCamera):
                 "code": "PositionABS",
                 "arg1": int(azimuth),
                 "arg2": int(elevation),
-                "arg3": int(zoom) if zoom is not None else 0
             }
 
             auth = None
@@ -617,6 +616,55 @@ class EmpireTechPTZ(AxisCamera):
 
         except Exception as e:
             print(f"[{self.config.name}] PositionABS error: {e}")
+            return False
+
+    def set_zoom_abs(self, zoom: float, wait: bool = True) -> bool:
+        """Set absolute zoom level without affecting pan/tilt position.
+
+        Reads current az/el, then sends PositionABS with only zoom changed.
+
+        Args:
+            zoom: Target zoom level (1-25x)
+            wait: If True, wait for camera to finish zooming
+
+        Returns:
+            True if command sent successfully
+        """
+        import requests
+        from requests.auth import HTTPDigestAuth
+
+        pos = self.get_position()
+        if pos is None:
+            print(f"[{self.config.name}] Cannot set zoom: failed to read position")
+            return False
+
+        az, el, _ = pos
+
+        try:
+            url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
+            params = {
+                "action": "start",
+                "channel": 1,
+                "code": "PositionABS",
+                "arg1": int(az),
+                "arg2": int(el),
+                "arg3": int(zoom)
+            }
+
+            auth = None
+            if self.config.username:
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=5)
+            if response.status_code != 200:
+                return False
+
+            if wait:
+                return self.wait_for_idle()
+            return True
+
+        except Exception as e:
+            print(f"[{self.config.name}] Zoom error: {e}")
             return False
 
     def _get_ip(self) -> str:

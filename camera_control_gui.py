@@ -578,7 +578,7 @@ class PTZCameraGUI:
         threading.Thread(target=fetch_pos, daemon=True).start()
 
     def _on_goto_position(self):
-        """Move camera to specified azimuth/elevation."""
+        """Move camera to specified azimuth/elevation. Does not touch zoom."""
         if not self._camera:
             return
 
@@ -593,16 +593,14 @@ class PTZCameraGUI:
             messagebox.showerror("Invalid Input", "Elevation must be 0-90 degrees")
             return
 
-        zoom = self.var_zoom.get()
-        print(f"[PTZ] Going to Az={az}°, El={el}°, Zoom={zoom}x")
+        print(f"[PTZ] Going to Az={az}°, El={el}°")
         self.btn_goto.config(state=tk.DISABLED, text="Moving...")
 
         def do_goto():
-            # goto_position with wait=True will block until camera stops moving
-            success = self._camera.goto_position(az, el, zoom=zoom, wait=True)
+            success = self._camera.goto_position(az, el, wait=True)
             self.btn_goto.config(state=tk.NORMAL, text="Go To Position")
             if success:
-                print(f"[PTZ] Reached Az={az}°, El={el}°, Zoom={zoom}x")
+                print(f"[PTZ] Reached Az={az}°, El={el}°")
                 self._update_position()
             else:
                 print("[PTZ] Failed or timed out")
@@ -610,7 +608,7 @@ class PTZCameraGUI:
         threading.Thread(target=do_goto, daemon=True).start()
 
     def _on_set_zoom(self):
-        """Set camera zoom to the specified level."""
+        """Set camera zoom to the specified level. Does not touch pan/tilt."""
         if not self._camera:
             return
 
@@ -622,13 +620,12 @@ class PTZCameraGUI:
         print(f"[PTZ] Setting zoom to {zoom}x")
 
         def do_zoom():
-            pos = self._camera.get_position()
-            if pos:
-                az, el, _ = pos
-                self._camera.goto_position(az, el, zoom=zoom, wait=True)
+            success = self._camera.set_zoom_abs(zoom, wait=True)
+            if success:
+                print(f"[PTZ] Zoom set to {zoom}x")
                 self._update_position()
             else:
-                print("[PTZ] Could not get current position for zoom")
+                print("[PTZ] Zoom failed")
 
         threading.Thread(target=do_zoom, daemon=True).start()
 
