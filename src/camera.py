@@ -156,7 +156,7 @@ class AxisCamera:
 
         if not self._cap or not self._cap.isOpened():
             if not self.connect():
-                raise RuntimeError(f"Cannot start: camera not connected")
+                raise RuntimeError("Cannot start: camera not connected")
 
         self._on_frame_callback = on_frame
         self._running = True
@@ -319,22 +319,25 @@ class EmpireTechPTZ(AxisCamera):
         # CGI command for PTZ control (Dahua-compatible)
         # Most Empire Tech cameras use Dahua protocol
         import requests
+        from requests.auth import HTTPDigestAuth
 
         try:
             # Continuous move command
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
+            # Camera requires speed in both arg1 and arg2
+            move_speed = max(int(abs(pan) * speed * 8), int(abs(tilt) * speed * 8), 1)
             params = {
                 "action": "start",
                 "channel": 1,
                 "code": self._get_ptz_code(pan, tilt, zoom),
-                "arg1": int(abs(pan) * speed * 8),  # Speed 1-8
-                "arg2": int(abs(tilt) * speed * 8),
+                "arg1": move_speed,
+                "arg2": move_speed,
                 "arg3": 0
             }
 
             auth = None
             if self.config.username:
-                auth = (self.config.username, self.config.password)
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
 
             response = requests.get(url, params=params, auth=auth, timeout=2)
             return response.status_code == 200
@@ -344,16 +347,25 @@ class EmpireTechPTZ(AxisCamera):
             return False
 
     def ptz_stop(self) -> bool:
-        """Stop PTZ movement."""
+        """Stop PTZ movement by sending zero-speed command."""
         import requests
+        from requests.auth import HTTPDigestAuth
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
-            params = {"action": "stop", "channel": 1, "code": "Up"}
+            # Send movement with 0 speed to stop
+            params = {
+                "action": "start",
+                "channel": 1,
+                "code": "Up",
+                "arg1": 0,
+                "arg2": 0,
+                "arg3": 0
+            }
 
             auth = None
             if self.config.username:
-                auth = (self.config.username, self.config.password)
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
 
             response = requests.get(url, params=params, auth=auth, timeout=2)
             return response.status_code == 200
@@ -372,6 +384,7 @@ class EmpireTechPTZ(AxisCamera):
             True if command sent successfully
         """
         import requests
+        from requests.auth import HTTPDigestAuth
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
@@ -386,7 +399,7 @@ class EmpireTechPTZ(AxisCamera):
 
             auth = None
             if self.config.username:
-                auth = (self.config.username, self.config.password)
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
 
             response = requests.get(url, params=params, auth=auth, timeout=5)
             return response.status_code == 200
@@ -405,6 +418,7 @@ class EmpireTechPTZ(AxisCamera):
             True if command sent successfully
         """
         import requests
+        from requests.auth import HTTPDigestAuth
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
@@ -419,7 +433,7 @@ class EmpireTechPTZ(AxisCamera):
 
             auth = None
             if self.config.username:
-                auth = (self.config.username, self.config.password)
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
 
             response = requests.get(url, params=params, auth=auth, timeout=2)
             return response.status_code == 200
@@ -440,6 +454,7 @@ class EmpireTechPTZ(AxisCamera):
         # Use relative zoom to approximate absolute
         # Full zoom range on PTZ425DB-AT is 25x
         import requests
+        from requests.auth import HTTPDigestAuth
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
@@ -454,13 +469,147 @@ class EmpireTechPTZ(AxisCamera):
 
             auth = None
             if self.config.username:
-                auth = (self.config.username, self.config.password)
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
 
             response = requests.get(url, params=params, auth=auth, timeout=2)
             return response.status_code == 200
 
         except Exception as e:
             print(f"[{self.config.name}] Zoom error: {e}")
+            return False
+
+    def get_position(self) -> Optional[tuple]:
+        """Get current PTZ position.
+
+        Returns:
+            Tuple of (azimuth, elevation, zoom) in degrees, or None on error.
+            Azimuth: 0-360 degrees
+            Elevation: -5 to 90 degrees (0 = horizontal, 90 = straight up)
+            Zoom: 1-25x optical zoom
+        """
+        import requests
+        from requests.auth import HTTPDigestAuth
+
+        try:
+            url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
+            params = {"action": "getStatus", "channel": 1}
+
+            auth = None
+            if self.config.username:
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=2)
+            if response.status_code != 200:
+                return None
+
+            # Parse response: status.Postion[0]=123.45 etc
+            az, el, zoom = 0.0, 0.0, 1.0
+            for line in response.text.split('\n'):
+                if 'Postion[0]=' in line:
+                    az = float(line.split('=')[1])
+                elif 'Postion[1]=' in line:
+                    el = float(line.split('=')[1])
+                elif 'ZoomValue=' in line:
+                    zoom = float(line.split('=')[1]) / 100.0  # Convert to 1-25x
+
+            return (az, el, zoom)
+
+        except Exception as e:
+            print(f"[{self.config.name}] Get position error: {e}")
+            return None
+
+    def is_moving(self) -> bool:
+        """Check if camera is currently moving.
+
+        Returns:
+            True if camera is in motion, False if idle
+        """
+        import requests
+        from requests.auth import HTTPDigestAuth
+
+        try:
+            url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
+            params = {"action": "getStatus", "channel": 1}
+
+            auth = None
+            if self.config.username:
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=2)
+            if response.status_code != 200:
+                return False
+
+            return "MoveStatus=Moving" in response.text
+
+        except Exception:
+            return False
+
+    def wait_for_idle(self, timeout: float = 30.0) -> bool:
+        """Wait for camera to stop moving based on MoveStatus.
+
+        Args:
+            timeout: Maximum seconds to wait
+
+        Returns:
+            True if camera is idle, False if timeout
+        """
+        import time
+        start = time.time()
+        was_moving = False
+
+        while time.time() - start < timeout:
+            moving = self.is_moving()
+            if moving:
+                was_moving = True
+            elif was_moving:
+                # Was moving, now idle - movement complete
+                return True
+            elif time.time() - start > 1.0:
+                # Never started moving after 1s - command may have failed
+                return False
+            time.sleep(0.1)
+        return False
+
+    def goto_position(self, azimuth: float, elevation: float,
+                      wait: bool = True) -> bool:
+        """Move to absolute azimuth/elevation using PositionABS command.
+
+        Args:
+            azimuth: Target azimuth in degrees (0-360)
+            elevation: Target elevation in degrees (0-90, 0=horizon, 90=up)
+            wait: If True, wait for camera to reach position
+
+        Returns:
+            True if command sent (and position reached if wait=True)
+        """
+        import requests
+        from requests.auth import HTTPDigestAuth
+
+        try:
+            url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
+            params = {
+                "action": "start",
+                "channel": 1,
+                "code": "PositionABS",
+                "arg1": int(azimuth),
+                "arg2": int(elevation),
+                "arg3": 0
+            }
+
+            auth = None
+            if self.config.username:
+                auth = HTTPDigestAuth(self.config.username, self.config.password)
+
+            response = requests.get(url, params=params, auth=auth, timeout=5)
+            if response.status_code != 200:
+                return False
+
+            if wait:
+                return self.wait_for_idle()
+            return True
+
+        except Exception as e:
+            print(f"[{self.config.name}] PositionABS error: {e}")
             return False
 
     def _get_ip(self) -> str:

@@ -273,32 +273,66 @@ class PTZCameraGUI:
             ('↙', 2, 0, (-1, -1, 0)),  ('↓', 2, 1, (0, -1, 0)),  ('↘', 2, 2, (1, -1, 0)),
         ]
 
+        # Configure stop button style
+        self.style.configure('Stop.TButton', background='#cc3333', foreground='white')
+
         for text, row, col, ptz in arrows:
             if ptz is None:
-                # Stop button
-                btn = ttk.Button(pad_frame, text=text, **btn_cfg, command=self._on_stop)
+                # Stop button - use the styled button
+                btn = ttk.Button(pad_frame, text="STOP", width=5,
+                                 style='Stop.TButton', command=self._on_stop)
                 btn.grid(row=row, column=col, padx=2, pady=2)
-                # Style it red
-                self.style.configure('Stop.TButton', background='#cc3333')
             else:
                 btn = ttk.Button(pad_frame, text=text, **btn_cfg)
                 btn.grid(row=row, column=col, padx=2, pady=2)
-                btn.bind('<ButtonPress-1>', lambda e, p=ptz: self._on_ptz(*p))
-                btn.bind('<ButtonRelease-1>', lambda e: self._on_stop())
+                # Use command for simple click instead of press/release bindings
+                btn.configure(command=lambda p=ptz: self._ptz_click(*p))
 
         # Zoom buttons
         zoom_row = ttk.Frame(ptz_frame)
         zoom_row.pack(fill=tk.X, pady=(10, 0))
 
-        btn_zout = ttk.Button(zoom_row, text="Zoom −", width=10)
+        btn_zout = ttk.Button(zoom_row, text="Zoom −", width=10,
+                              command=lambda: self._ptz_click(0, 0, -1))
         btn_zout.pack(side=tk.LEFT, expand=True)
-        btn_zout.bind('<ButtonPress-1>', lambda e: self._on_ptz(0, 0, -1))
-        btn_zout.bind('<ButtonRelease-1>', lambda e: self._on_stop())
 
-        btn_zin = ttk.Button(zoom_row, text="Zoom +", width=10)
+        btn_zin = ttk.Button(zoom_row, text="Zoom +", width=10,
+                             command=lambda: self._ptz_click(0, 0, 1))
         btn_zin.pack(side=tk.RIGHT, expand=True)
-        btn_zin.bind('<ButtonPress-1>', lambda e: self._on_ptz(0, 0, 1))
-        btn_zin.bind('<ButtonRelease-1>', lambda e: self._on_stop())
+
+        # --- Absolute Position Section ---
+        pos_frame = ttk.LabelFrame(ctrl_frame, text="Absolute Position", padding=10)
+        pos_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Current position display
+        cur_row = ttk.Frame(pos_frame)
+        cur_row.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(cur_row, text="Current:", width=8).pack(side=tk.LEFT)
+        self.lbl_cur_pos = ttk.Label(cur_row, text="Az: --  El: --")
+        self.lbl_cur_pos.pack(side=tk.LEFT)
+        ttk.Button(cur_row, text="↻", width=2, command=self._update_position).pack(side=tk.RIGHT)
+
+        # Azimuth input
+        az_row = ttk.Frame(pos_frame)
+        az_row.pack(fill=tk.X, pady=2)
+        ttk.Label(az_row, text="Azimuth:", width=8).pack(side=tk.LEFT)
+        self.var_azimuth = tk.DoubleVar(value=0.0)
+        ttk.Entry(az_row, textvariable=self.var_azimuth, width=8).pack(side=tk.LEFT, padx=5)
+        ttk.Label(az_row, text="° (0-360)").pack(side=tk.LEFT)
+
+        # Elevation input
+        el_row = ttk.Frame(pos_frame)
+        el_row.pack(fill=tk.X, pady=2)
+        ttk.Label(el_row, text="Elevation:", width=8).pack(side=tk.LEFT)
+        self.var_elevation = tk.DoubleVar(value=0.0)
+        ttk.Entry(el_row, textvariable=self.var_elevation, width=8).pack(side=tk.LEFT, padx=5)
+        ttk.Label(el_row, text="° (0-90)").pack(side=tk.LEFT)
+
+        # Go To button
+        goto_row = ttk.Frame(pos_frame)
+        goto_row.pack(fill=tk.X, pady=(5, 0))
+        self.btn_goto = ttk.Button(goto_row, text="Go To Position", command=self._on_goto_position)
+        self.btn_goto.pack(fill=tk.X)
 
         # --- Presets Section ---
         preset_frame = ttk.LabelFrame(ctrl_frame, text="Presets", padding=10)
@@ -338,24 +372,24 @@ class PTZCameraGUI:
 
     def _create_bindings(self):
         """Set up keyboard bindings."""
-        # Arrow keys for PTZ
-        self.root.bind('<KeyPress-Up>', lambda e: self._on_ptz(0, 1, 0))
-        self.root.bind('<KeyPress-Down>', lambda e: self._on_ptz(0, -1, 0))
-        self.root.bind('<KeyPress-Left>', lambda e: self._on_ptz(-1, 0, 0))
-        self.root.bind('<KeyPress-Right>', lambda e: self._on_ptz(1, 0, 0))
+        # Arrow keys for PTZ - bind_all ensures it works even when Entry has focus
+        self.root.bind_all('<KeyPress-Up>', lambda e: self._on_ptz(0, 1, 0))
+        self.root.bind_all('<KeyPress-Down>', lambda e: self._on_ptz(0, -1, 0))
+        self.root.bind_all('<KeyPress-Left>', lambda e: self._on_ptz(-1, 0, 0))
+        self.root.bind_all('<KeyPress-Right>', lambda e: self._on_ptz(1, 0, 0))
 
-        self.root.bind('<KeyRelease-Up>', lambda e: self._on_stop())
-        self.root.bind('<KeyRelease-Down>', lambda e: self._on_stop())
-        self.root.bind('<KeyRelease-Left>', lambda e: self._on_stop())
-        self.root.bind('<KeyRelease-Right>', lambda e: self._on_stop())
+        self.root.bind_all('<KeyRelease-Up>', lambda e: self._on_stop())
+        self.root.bind_all('<KeyRelease-Down>', lambda e: self._on_stop())
+        self.root.bind_all('<KeyRelease-Left>', lambda e: self._on_stop())
+        self.root.bind_all('<KeyRelease-Right>', lambda e: self._on_stop())
 
         # Zoom
-        self.root.bind('<KeyPress-plus>', lambda e: self._on_ptz(0, 0, 1))
-        self.root.bind('<KeyPress-minus>', lambda e: self._on_ptz(0, 0, -1))
-        self.root.bind('<KeyPress-equal>', lambda e: self._on_ptz(0, 0, 1))
-        self.root.bind('<KeyRelease-plus>', lambda e: self._on_stop())
-        self.root.bind('<KeyRelease-minus>', lambda e: self._on_stop())
-        self.root.bind('<KeyRelease-equal>', lambda e: self._on_stop())
+        self.root.bind_all('<KeyPress-plus>', lambda e: self._on_ptz(0, 0, 1))
+        self.root.bind_all('<KeyPress-minus>', lambda e: self._on_ptz(0, 0, -1))
+        self.root.bind_all('<KeyPress-equal>', lambda e: self._on_ptz(0, 0, 1))
+        self.root.bind_all('<KeyRelease-plus>', lambda e: self._on_stop())
+        self.root.bind_all('<KeyRelease-minus>', lambda e: self._on_stop())
+        self.root.bind_all('<KeyRelease-equal>', lambda e: self._on_stop())
 
         # Stop
         self.root.bind('<space>', lambda e: self._on_stop())
@@ -437,17 +471,34 @@ class PTZCameraGUI:
             return
 
         speed = self.var_speed.get()
+        print(f"[PTZ] Move: pan={pan}, tilt={tilt}, zoom={zoom}, speed={speed}")
         threading.Thread(
             target=self._camera.ptz_move,
             args=(pan, tilt, zoom, speed),
             daemon=True
         ).start()
 
+    def _ptz_click(self, pan: float, tilt: float, zoom: float):
+        """Send PTZ movement for a button click (short burst)."""
+        if not self._camera:
+            return
+
+        speed = self.var_speed.get()
+        print(f"[PTZ] Click: pan={pan}, tilt={tilt}, zoom={zoom}, speed={speed}")
+
+        def move_burst():
+            self._camera.ptz_move(pan, tilt, zoom, speed)
+            time.sleep(0.3)  # Move for 300ms
+            self._camera.ptz_stop()
+
+        threading.Thread(target=move_burst, daemon=True).start()
+
     def _on_stop(self):
         """Stop PTZ movement."""
         if not self._camera:
             return
 
+        print("[PTZ] Stop")
         threading.Thread(target=self._camera.ptz_stop, daemon=True).start()
 
     def _on_goto_preset(self, preset: Optional[int] = None):
@@ -479,6 +530,56 @@ class PTZCameraGUI:
                 daemon=True
             ).start()
 
+    def _update_position(self):
+        """Update current position display."""
+        if not self._camera:
+            self.lbl_cur_pos.config(text="Az: --  El: --")
+            return
+
+        def fetch_pos():
+            pos = self._camera.get_position()
+            if pos:
+                az, el, zoom = pos
+                self.lbl_cur_pos.config(text=f"Az: {az:.1f}°  El: {el:.1f}°")
+                # Also update input fields to current position
+                self.var_azimuth.set(round(az, 1))
+                self.var_elevation.set(round(el, 1))
+            else:
+                self.lbl_cur_pos.config(text="Az: --  El: --")
+
+        threading.Thread(target=fetch_pos, daemon=True).start()
+
+    def _on_goto_position(self):
+        """Move camera to specified azimuth/elevation."""
+        if not self._camera:
+            return
+
+        az = self.var_azimuth.get()
+        el = self.var_elevation.get()
+
+        # Validate inputs
+        if not (0 <= az <= 360):
+            messagebox.showerror("Invalid Input", "Azimuth must be 0-360 degrees")
+            return
+        if not (0 <= el <= 90):
+            messagebox.showerror("Invalid Input", "Elevation must be 0-90 degrees")
+            return
+
+        print(f"[PTZ] Going to Az={az}°, El={el}°")
+        self.btn_goto.config(state=tk.DISABLED, text="Moving...")
+
+        def do_goto():
+            # goto_position with wait=True will block until camera stops moving
+            success = self._camera.goto_position(az, el, wait=True)
+            self.btn_goto.config(state=tk.NORMAL, text="Go To Position")
+            if success:
+                print(f"[PTZ] Reached Az={az}°, El={el}°")
+                self._update_position()
+            else:
+                print("[PTZ] Failed or timed out")
+
+        threading.Thread(target=do_goto, daemon=True).start()
+
     def _start_video_loop(self):
         """Start the video update loop."""
         self._update_video()
@@ -489,6 +590,9 @@ class PTZCameraGUI:
             frame = self._video.get_frame()
 
             if frame is not None:
+                # Note: Camera has Flip=true set for upside-down mount
+                # No software flip needed
+
                 # Update info labels
                 w, h = self._video.resolution
                 self.lbl_res.config(text=f"Resolution: {w}x{h}")
@@ -544,7 +648,7 @@ def main():
     elif 'alt' in available:
         style.theme_use('alt')
 
-    app = PTZCameraGUI(root)
+    PTZCameraGUI(root)
     root.mainloop()
 
 

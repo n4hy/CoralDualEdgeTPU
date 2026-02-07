@@ -375,25 +375,48 @@ from src import EmpireTechPTZ, CameraConfig
 # Create PTZ camera
 config = CameraConfig(
     name="ptz-cam",
-    rtsp_url=EmpireTechPTZ.create_rtsp_url("192.168.1.101", "admin", "password")
+    rtsp_url=EmpireTechPTZ.create_rtsp_url("192.168.1.101", "admin", "password"),
+    username="admin",
+    password="password"
 )
 ptz = EmpireTechPTZ(config)
 ptz.connect()
 
-# Pan right, tilt up
+# Absolute positioning - go to azimuth 90°, elevation 45°
+ptz.goto_position(90, 45)  # Blocks until camera reaches position
+
+# Check current position
+az, el, zoom = ptz.get_position()
+print(f"Position: Az={az}°, El={el}°, Zoom={zoom}x")
+
+# Relative movement
 ptz.ptz_move(pan=0.5, tilt=0.3, speed=0.7)
 time.sleep(2)
 ptz.ptz_stop()
 
-# Zoom to 50%
-ptz.zoom_to(0.5)
-
-# Go to preset 1
-ptz.ptz_goto_preset(1)
-
-# Save current position as preset 5
-ptz.ptz_set_preset(5)
+# Presets
+ptz.ptz_set_preset(5)      # Save current position
+ptz.ptz_goto_preset(5)     # Return to saved position
 ```
+
+### PTZ Camera Control GUI
+
+A tkinter-based GUI for PTZ camera control with live video:
+
+```bash
+# Run via X11 forwarding
+ssh -X user@orangepi
+source coral39/bin/activate
+python camera_control_gui.py
+```
+
+Features:
+- Live RTSP video display
+- Directional controls (8-way pad)
+- Absolute positioning (azimuth 0-360°, elevation 0-90°)
+- Zoom controls
+- Preset management (save/recall positions 1-255)
+- Keyboard shortcuts (arrow keys, +/- for zoom)
 
 ## Troubleshooting
 
