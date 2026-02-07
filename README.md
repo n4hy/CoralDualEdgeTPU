@@ -165,6 +165,7 @@ CoralDualEdgeTPU/
 ├── src/
 │   ├── dual_tpu.py         # Core dual TPU management
 │   ├── camera.py           # AXIS & Empire Tech PTZ camera interface
+│   ├── sky_calibration.py  # Star field plate solving for compass calibration
 │   ├── tracker.py          # Object tracking (IoU/centroid)
 │   ├── pipeline.py         # Detection + classification pipeline
 │   ├── benchmark.py        # Comprehensive benchmark suite
@@ -175,11 +176,15 @@ CoralDualEdgeTPU/
 │   ├── axis_camera_pipeline.py
 │   ├── ptz_stream.py       # Simple PTZ camera web viewer
 │   └── sky_watcher.py      # Airplane/satellite detection (dual camera)
+├── data/                   # Star catalog (auto-downloaded)
 ├── models/                 # Edge TPU compiled models
+├── recordings/             # Recorded video clips
 ├── benchmark_results/      # JSON/Markdown benchmark reports
 ├── coral39/                # Python 3.9 virtual environment
 ├── run_benchmark.py        # TPU benchmark runner
-└── run_ptz_stream_benchmark.py  # PTZ streaming benchmark runner
+├── run_ptz_stream_benchmark.py  # PTZ streaming benchmark runner
+├── calibrate_camera.py     # Sky calibration CLI
+└── camera_control_gui.py   # PTZ camera control GUI (tkinter)
 ```
 
 ## Features
@@ -208,6 +213,14 @@ CoralDualEdgeTPU/
 - **Centroid tracker** for sparse objects
 - **Track persistence** across frames
 - **Velocity estimation** for motion prediction
+
+### Sky Calibration
+
+- **Star field plate solving** to determine true compass north
+- **HYG star catalog** with ~9100 naked-eye visible stars (auto-downloaded)
+- **Triangle hash matching** (Groth 1986) for robust star identification
+- **Multi-position calibration** with weighted averaging
+- **Astronomical coordinate transforms** (RA/Dec, Alt/Az, precession, refraction)
 
 ### Event Publishing
 
@@ -266,10 +279,15 @@ Dual TPU Parallel (10000 iterations):
 - No thermal throttling (temperature constant at 43°C)
 - Slight throughput decrease over time (~5%) due to system scheduling
 - Both TPUs evenly utilized (TPU0: 33,015 / TPU1: 29,499)
-- Combined system compute budget:
-- AcceleratorTOPS (int8)Status
-- CIX Zhouyi V3 NPU~4-6 TOPS*Buggy (single inference only)
-- Dual Coral Edge TPU 7.72 TOPS Pending PCIe adapterTotal (working)~ 7.72 TOPS WednesdayTotal (if NPU fixed)~12-14 TOPS Future
+
+**Combined System Compute Budget:**
+
+| Accelerator | TOPS (int8) | Status |
+|-------------|-------------|--------|
+| CIX Zhouyi V3 NPU | ~4-6 TOPS | Buggy (single inference only) |
+| Dual Coral Edge TPU | 7.72 TOPS | Working |
+| **Total (working)** | **~7.72 TOPS** | |
+| **Total (if NPU fixed)** | **~12-14 TOPS** | Future |
 
 
 ## PTZ Camera Streaming Benchmark
@@ -385,6 +403,9 @@ ptz.connect()
 # Absolute positioning - go to azimuth 90°, elevation 45°
 ptz.goto_position(90, 45)  # Blocks until camera reaches position
 
+# Absolute positioning with zoom (1x-25x)
+ptz.goto_position(180, 30, zoom=10.0)  # 10x zoom
+
 # Check current position
 az, el, zoom = ptz.get_position()
 print(f"Position: Az={az}°, El={el}°, Zoom={zoom}x")
@@ -411,12 +432,40 @@ python camera_control_gui.py
 ```
 
 Features:
-- Live RTSP video display
+- Live RTSP video display with FPS counter
 - Directional controls (8-way pad)
 - Absolute positioning (azimuth 0-360°, elevation 0-90°)
-- Zoom controls
+- Absolute zoom control (1x-25x via PositionABS)
 - Preset management (save/recall positions 1-255)
-- Keyboard shortcuts (arrow keys, +/- for zoom)
+- Video recording with configurable duration (ffmpeg stream copy)
+- Keyboard shortcuts (arrow keys, +/- for zoom step)
+
+### Sky Calibration (Compass Alignment)
+
+Calibrate the PTZ camera's compass by pointing at the night sky and matching detected stars against the HYG star catalog:
+
+```bash
+source coral39/bin/activate
+
+# Standard calibration (4 sky positions)
+python calibrate_camera.py --lat 39.6477 --lon -76.1347
+
+# Quick test (1 position)
+python calibrate_camera.py --lat 39.6477 --lon -76.1347 --quick
+
+# Save debug images
+python calibrate_camera.py --lat 39.6477 --lon -76.1347 --save-images
+```
+
+The calibrator:
+1. Points the camera at high-elevation sky positions
+2. Captures frames and detects stars using OpenCV
+3. Queries the HYG catalog (~9100 naked-eye stars) for expected stars in the field of view
+4. Plate-solves using triangle hash matching (Groth 1986) to identify stars
+5. Computes the azimuth offset between camera-reported and true astronomical north
+6. Repeats at multiple positions for verification and averages the results
+
+Output includes a JSON result file and Markdown report with the compass offset to apply.
 
 ## Troubleshooting
 
@@ -499,22 +548,43 @@ Until Google releases an updated libedgetpu1-max, use `libedgetpu1-std` which pr
 
 ## Recent Updates
 
+### 2026-02-07: Sky Calibration System
+
+Star field plate solving for absolute compass calibration:
+
+- **`src/sky_calibration.py`** — Complete astronomy + plate solving module:
+  - `AstronomyEngine`: Julian date, sidereal time, RA/Dec→Alt/Az, J2000 precession
+  - `StarCatalog`: HYG v3 database (~9100 stars, auto-download)
+  - `CameraModel`: PTZ425DB-AT optics, gnomonic projection
+  - `StarDetector`: OpenCV star detection pipeline
+  - `PlateSolver`: Triangle hash matching (Groth 1986)
+  - `CameraCalibrator`: Multi-position orchestrator
+- **`calibrate_camera.py`** — CLI for running calibration at night
+
+### 2026-02-07: PTZ GUI Improvements
+
+- **Absolute zoom control**: Replaced relative zoom buttons with spinbox (1-25x) using PositionABS arg3
+- **Video recording**: Record/Stop buttons with duration input, uses ffmpeg stream copy
+- **Zoom stop fix**: `ptz_stop()` now sends ZoomTele stop alongside pan/tilt stop
+- **`goto_position()`** accepts optional `zoom` parameter (1.0-25.0x)
+
+### 2026-02-04: Absolute PTZ Positioning
+
+- Status-based movement waiting (MoveStatus polling instead of arbitrary delays)
+- `goto_position(az, el)` with automatic wait-for-idle
+- `get_position()` returns current azimuth, elevation, and zoom
+
 ### 2026-02-03: PTZ Camera Streaming Integration
 
 Added real-time PTZ camera streaming with Edge TPU inference:
 
-**New Features:**
 - **PTZ Camera Support**: Full integration with Empire Tech PTZ425DB-AT camera
   - 4MP main stream (2560x1440 @ 30fps) via RTSP
   - Network discovery and connectivity verification
-  - Automatic camera detection at default IP (192.168.1.108)
 
 - **Streaming Benchmark Suite** (`run_ptz_stream_benchmark.py`):
   - End-to-end latency measurement (capture → preprocess → inference)
   - Per-stage timing breakdown (capture, preprocessing, TPU inference)
-  - Latency percentiles (p50, p95, p99)
-  - Detection statistics by class
-  - Thermal monitoring during benchmark
   - JSON and Markdown report generation
 
 - **Web-based Camera Viewer** (`examples/ptz_stream.py`):
@@ -532,12 +602,6 @@ Added real-time PTZ camera streaming with Edge TPU inference:
 | Temperature | 42°C (stable) |
 
 **Key Finding**: Single Edge TPU can process full 30fps 4MP video stream with only 12ms end-to-end latency and zero frame drops.
-
-**Files Added:**
-- `src/stream_benchmark.py` - Streaming benchmark module
-- `run_ptz_stream_benchmark.py` - CLI benchmark runner
-- `examples/ptz_stream.py` - Web-based camera viewer
-- `benchmark_results/ptz_stream_*.json` - Benchmark results
 
 ## Authors
 
