@@ -600,7 +600,7 @@ class EmpireTechPTZ(AxisCamera):
                 "code": "PositionABS",
                 "arg1": int(azimuth),
                 "arg2": int(elevation),
-                "arg3": int(zoom * 100) if zoom is not None else 0
+                "arg3": int(zoom) if zoom is not None else 0
             }
 
             auth = None
