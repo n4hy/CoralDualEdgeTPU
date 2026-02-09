@@ -19,6 +19,7 @@ Usage:
     python camera_control_gui.py
 """
 
+import os
 import subprocess
 import threading
 import time
@@ -31,7 +32,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 
-from src.camera import CameraConfig, EmpireTechPTZ
+from src.camera import CameraConfig, EmpireTechPTZ, _sanitize_url
 
 
 class VideoStream:
@@ -72,7 +73,7 @@ class VideoStream:
 
     def _capture_loop(self, url: str) -> None:
         """Background capture loop."""
-        print(f"[VideoStream] Connecting to: {url}")
+        print(f"[VideoStream] Connecting to: {_sanitize_url(url)}")
 
         try:
             self._cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
@@ -169,6 +170,7 @@ class PTZCameraGUI:
         self._rec_duration: int = 0
         self._rec_file: str = ""
         self._software_flip: bool = False
+        self._state_syncing: bool = False
 
         # Style
         self.style = ttk.Style()
@@ -235,7 +237,7 @@ class PTZCameraGUI:
         row = ttk.Frame(conn_frame)
         row.pack(fill=tk.X, pady=2)
         ttk.Label(row, text="Password:", width=12).pack(side=tk.LEFT)
-        self.var_pass = tk.StringVar(value="Admin123!")
+        self.var_pass = tk.StringVar(value=os.environ.get("CAMERA_PASS", ""))
         ttk.Entry(row, textvariable=self.var_pass, width=18, show='●').pack(side=tk.LEFT, padx=5)
 
         # Stream type
@@ -458,7 +460,7 @@ class PTZCameraGUI:
             return
 
         url = self._get_rtsp_url()
-        print(f"[GUI] Connecting to: {url}")
+        print(f"[GUI] Connecting to: {_sanitize_url(url)}")
 
         # Create camera instance for PTZ control
         config = CameraConfig(
@@ -629,7 +631,7 @@ class PTZCameraGUI:
         """
         if not self._camera:
             return
-        if getattr(self, '_state_syncing', False):
+        if self._state_syncing:
             return
 
         enabled = self.var_flip.get()
@@ -640,7 +642,7 @@ class PTZCameraGUI:
             # Flip OFF = OSD on + no software flip
             ok = self._camera.set_osd_enabled(not enabled)
             if ok:
-                self._software_flip = enabled
+                self.root.after_idle(lambda: setattr(self, '_software_flip', enabled))
                 print(f"[GUI] Flip {'enabled' if enabled else 'disabled'}, "
                       f"OSD {'off' if enabled else 'on'}, verified")
             else:
@@ -661,13 +663,16 @@ class PTZCameraGUI:
             pos = self._camera.get_position()
             if pos:
                 az, el, zoom = pos
-                self.lbl_cur_pos.config(
-                    text=f"Az: {az:.1f}°  El: {el:.1f}°  Zm: {zoom:.1f}x")
-                self.var_azimuth.set(round(az, 1))
-                self.var_elevation.set(round(el, 1))
-                self.var_zoom.set(round(zoom, 1))
+                self.root.after_idle(lambda: (
+                    self.lbl_cur_pos.config(
+                        text=f"Az: {az:.1f}°  El: {el:.1f}°  Zm: {zoom:.1f}x"),
+                    self.var_azimuth.set(round(az, 1)),
+                    self.var_elevation.set(round(el, 1)),
+                    self.var_zoom.set(round(zoom, 1)),
+                ))
             else:
-                self.lbl_cur_pos.config(text="Az: --  El: --")
+                self.root.after_idle(lambda:
+                    self.lbl_cur_pos.config(text="Az: --  El: --"))
 
         threading.Thread(target=fetch_pos, daemon=True).start()
 
@@ -692,7 +697,8 @@ class PTZCameraGUI:
 
         def do_goto():
             success = self._camera.goto_position(az, el, wait=True)
-            self.btn_goto.config(state=tk.NORMAL, text="Go To Position")
+            self.root.after_idle(lambda:
+                self.btn_goto.config(state=tk.NORMAL, text="Go To Position"))
             if success:
                 print(f"[PTZ] Reached Az={az}°, El={el}°")
                 self._update_position()
@@ -741,7 +747,6 @@ class PTZCameraGUI:
             messagebox.showerror("Invalid Duration", "Duration must be at least 1 second")
             return
 
-        import os
         os.makedirs("recordings", exist_ok=True)
 
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")

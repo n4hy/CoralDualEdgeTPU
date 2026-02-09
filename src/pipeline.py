@@ -107,6 +107,7 @@ class DualTPUPipeline:
         # Trackers per camera
         self.trackers: dict[str, IoUTracker | CentroidTracker] = {}
         self.tracker_type = tracker_type
+        self._lock = threading.Lock()
 
         # Processing stats
         self.stats = {
@@ -132,18 +133,19 @@ class DualTPUPipeline:
 
     def _get_tracker(self, camera_name: str):
         """Get or create tracker for a camera."""
-        if camera_name not in self.trackers:
-            if self.tracker_type == "iou":
-                self.trackers[camera_name] = IoUTracker(
-                    iou_threshold=0.3,
-                    max_missing=15
-                )
-            else:
-                self.trackers[camera_name] = CentroidTracker(
-                    max_distance=50.0,
-                    max_missing=15
-                )
-        return self.trackers[camera_name]
+        with self._lock:
+            if camera_name not in self.trackers:
+                if self.tracker_type == "iou":
+                    self.trackers[camera_name] = IoUTracker(
+                        iou_threshold=0.3,
+                        max_missing=15
+                    )
+                else:
+                    self.trackers[camera_name] = CentroidTracker(
+                        max_distance=50.0,
+                        max_missing=15
+                    )
+            return self.trackers[camera_name]
 
     def preprocess(self, image: np.ndarray, target_size: tuple[int, int]) -> np.ndarray:
         """Preprocess image for inference."""
@@ -207,13 +209,14 @@ class DualTPUPipeline:
         processing_time = (time.time() - start_time) * 1000
 
         # Update stats
-        self.stats["frames_processed"] += 1
-        self.stats["total_detections"] += len(detections)
-        alpha = 0.1
-        self.stats["avg_inference_ms"] = (
-            alpha * processing_time +
-            (1 - alpha) * self.stats["avg_inference_ms"]
-        )
+        with self._lock:
+            self.stats["frames_processed"] += 1
+            self.stats["total_detections"] += len(detections)
+            alpha = 0.1
+            self.stats["avg_inference_ms"] = (
+                alpha * processing_time +
+                (1 - alpha) * self.stats["avg_inference_ms"]
+            )
 
         # Annotate if requested
         annotated = None
@@ -294,8 +297,8 @@ class DualTPUPipeline:
 
     def _id_to_color(self, track_id: int) -> tuple[int, int, int]:
         """Generate consistent color for track ID."""
-        np.random.seed(track_id * 42)
-        return tuple(int(x) for x in np.random.randint(50, 255, 3))
+        h = hash(track_id * 42) & 0xFFFFFF
+        return (50 + (h & 0xFF) % 206, 50 + ((h >> 8) & 0xFF) % 206, 50 + ((h >> 16) & 0xFF) % 206)
 
 
 class LivePipeline:

@@ -18,7 +18,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from queue import Queue, Empty
 from typing import Optional
-from urllib.parse import urlparse  # noqa: F401
+import uuid
 
 import requests
 
@@ -134,7 +134,7 @@ class MQTTOutput:
         self.username = username
         self.password = password
         self.topic_prefix = topic_prefix
-        self.client_id = client_id or f"coral-tpu-{int(time.time())}"
+        self.client_id = client_id or f"coral-tpu-{uuid.uuid4().hex[:8]}"
         self.qos = qos
 
         self._client = None

@@ -29,5 +29,8 @@ Thumbs.db
 # Logs
 *.log
 
+# Environment secrets
+.env
+
 # Star catalog data (large CSV, auto-downloaded)
 data/*.csv

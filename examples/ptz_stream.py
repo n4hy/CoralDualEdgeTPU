@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Simple MJPEG streaming server for PTZ camera."""
 
+import os
+
 import cv2
 import time
 from flask import Flask, Response
 
 app = Flask(__name__)
 
-CAMERA_URL = 'rtsp://admin:Admin123!@192.168.1.108/cam/realmonitor?channel=1&subtype=0'
+_user = os.environ.get("CAMERA_USER", "admin")
+_pass = os.environ.get("CAMERA_PASS", "")
+_ip = os.environ.get("CAMERA_IP", "192.168.1.108")
+CAMERA_URL = f'rtsp://{_user}:{_pass}@{_ip}/cam/realmonitor?channel=1&subtype=0'
 
 
 def generate_frames():

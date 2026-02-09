@@ -28,6 +28,7 @@ Before running:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -42,7 +43,7 @@ from src.sky_calibration import CameraCalibrator, StarCatalog
 # Default configuration
 DEFAULT_CAMERA_IP = "192.168.1.108"
 DEFAULT_CAMERA_USER = "admin"
-DEFAULT_CAMERA_PASS = "Admin123!"
+DEFAULT_CAMERA_PASS = os.environ.get("CAMERA_PASS", "")
 DEFAULT_LAT = 39.64768815
 DEFAULT_LON = -76.13474955
 DEFAULT_ELEVATION = 60  # degrees

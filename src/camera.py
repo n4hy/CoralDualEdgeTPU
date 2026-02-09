@@ -14,8 +14,12 @@ from dataclasses import dataclass
 from queue import Queue, Empty
 from typing import Optional, Callable
 
+import urllib.parse
+
 import cv2
 import numpy as np
+import requests
+from requests.auth import HTTPDigestAuth
 
 
 @dataclass
@@ -47,6 +51,19 @@ class Frame:
     timestamp: float
     camera_name: str
     frame_number: int
+
+
+def _sanitize_url(url: str) -> str:
+    """Replace credentials in a URL with '***' for safe logging."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.username or parsed.password:
+        # Rebuild with masked credentials
+        safe = parsed._replace(
+            netloc=f"***:***@{parsed.hostname}"
+            + (f":{parsed.port}" if parsed.port else "")
+        )
+        return urllib.parse.urlunparse(safe)
+    return url
 
 
 class AxisCamera:
@@ -124,7 +141,7 @@ class AxisCamera:
         self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         if not self._cap.isOpened():
-            print(f"[{self.config.name}] Failed to connect to {self.config.rtsp_url}")
+            print(f"[{self.config.name}] Failed to connect to {_sanitize_url(self.config.rtsp_url)}")
             return False
 
         # Get actual properties
@@ -241,9 +258,23 @@ class AxisCamera:
         except Empty:
             return None
 
-    def get_latest_frame(self) -> Optional[Frame]:
-        """Get most recent frame (non-blocking)."""
+    def get_latest_frame(self, copy: bool = True) -> Optional[Frame]:
+        """Get most recent frame (non-blocking).
+
+        Args:
+            copy: If True, return a copy so caller modifications don't
+                  affect internal state. Set False for read-only access.
+        """
         with self._lock:
+            if self._last_frame is None:
+                return None
+            if copy:
+                return Frame(
+                    image=self._last_frame.image.copy(),
+                    timestamp=self._last_frame.timestamp,
+                    camera_name=self._last_frame.camera_name,
+                    frame_number=self._last_frame.frame_number,
+                )
             return self._last_frame
 
     @property
@@ -298,7 +329,16 @@ class EmpireTechPTZ(AxisCamera):
 
     def __init__(self, config: CameraConfig):
         super().__init__(config)
-        self._ptz_session = None
+        self._ptz_session: Optional[requests.Session] = None
+
+    def _get_ptz_session(self) -> requests.Session:
+        """Get or create a reusable HTTP session for PTZ commands."""
+        if self._ptz_session is None:
+            self._ptz_session = requests.Session()
+            if self.config.username:
+                self._ptz_session.auth = HTTPDigestAuth(
+                    self.config.username, self.config.password)
+        return self._ptz_session
 
     @classmethod
     def create_rtsp_url(cls, ip: str, username: str = "", password: str = "",
@@ -334,8 +374,6 @@ class EmpireTechPTZ(AxisCamera):
         """
         # CGI command for PTZ control (Dahua-compatible)
         # Most Empire Tech cameras use Dahua protocol
-        import requests
-        from requests.auth import HTTPDigestAuth
 
         # Read current zoom so we can preserve it
         pos = self.get_position()
@@ -355,11 +393,7 @@ class EmpireTechPTZ(AxisCamera):
                 "arg3": current_arg3
             }
 
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
-
-            response = requests.get(url, params=params, auth=auth, timeout=2)
+            response = self._get_ptz_session().get(url, params=params, timeout=2)
             return response.status_code == 200
 
         except Exception as e:
@@ -368,19 +402,13 @@ class EmpireTechPTZ(AxisCamera):
 
     def ptz_stop(self) -> bool:
         """Stop all PTZ movement including zoom."""
-        import requests
-        from requests.auth import HTTPDigestAuth
-
         # Read current zoom so we can preserve it
         pos = self.get_position()
         current_arg3 = self.zoom_x_to_arg3(pos[2]) if pos else 0
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
-
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
+            session = self._get_ptz_session()
 
             # Stop pan/tilt
             params = {
@@ -391,11 +419,11 @@ class EmpireTechPTZ(AxisCamera):
                 "arg2": 0,
                 "arg3": current_arg3
             }
-            r1 = requests.get(url, params=params, auth=auth, timeout=2)
+            r1 = session.get(url, params=params, timeout=2)
 
             # Stop zoom
             params["code"] = "ZoomTele"
-            r2 = requests.get(url, params=params, auth=auth, timeout=2)
+            r2 = session.get(url, params=params, timeout=2)
 
             return r1.status_code == 200 and r2.status_code == 200
 
@@ -412,9 +440,6 @@ class EmpireTechPTZ(AxisCamera):
         Returns:
             True if command sent successfully
         """
-        import requests
-        from requests.auth import HTTPDigestAuth
-
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
             params = {
@@ -426,11 +451,7 @@ class EmpireTechPTZ(AxisCamera):
                 "arg3": 0
             }
 
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
-
-            response = requests.get(url, params=params, auth=auth, timeout=5)
+            response = self._get_ptz_session().get(url, params=params, timeout=5)
             return response.status_code == 200
 
         except Exception as e:
@@ -446,9 +467,6 @@ class EmpireTechPTZ(AxisCamera):
         Returns:
             True if command sent successfully
         """
-        import requests
-        from requests.auth import HTTPDigestAuth
-
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
             params = {
@@ -460,11 +478,7 @@ class EmpireTechPTZ(AxisCamera):
                 "arg3": 0
             }
 
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
-
-            response = requests.get(url, params=params, auth=auth, timeout=2)
+            response = self._get_ptz_session().get(url, params=params, timeout=2)
             return response.status_code == 200
 
         except Exception as e:
@@ -482,9 +496,6 @@ class EmpireTechPTZ(AxisCamera):
         """
         # Use relative zoom to approximate absolute
         # Full zoom range on PTZ425DB-AT is 25x
-        import requests
-        from requests.auth import HTTPDigestAuth
-
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
             params = {
@@ -496,11 +507,7 @@ class EmpireTechPTZ(AxisCamera):
                 "arg3": 0
             }
 
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
-
-            response = requests.get(url, params=params, auth=auth, timeout=2)
+            response = self._get_ptz_session().get(url, params=params, timeout=2)
             return response.status_code == 200
 
         except Exception as e:
@@ -513,18 +520,11 @@ class EmpireTechPTZ(AxisCamera):
         Returns:
             True if OSD is on, False if off, None on error.
         """
-        import requests
-        from requests.auth import HTTPDigestAuth
-
         try:
             url = f"http://{self._get_ip()}/cgi-bin/configManager.cgi"
             params = {"action": "getConfig", "name": "VideoWidget"}
 
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
-
-            response = requests.get(url, params=params, auth=auth, timeout=5)
+            response = self._get_ptz_session().get(url, params=params, timeout=5)
             if response.status_code != 200:
                 return None
 
@@ -549,23 +549,18 @@ class EmpireTechPTZ(AxisCamera):
         Returns:
             True if verified successfully.
         """
-        import requests
-        from requests.auth import HTTPDigestAuth
-
         val = "true" if enabled else "false"
 
         try:
             url = f"http://{self._get_ip()}/cgi-bin/configManager.cgi"
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
+            session = self._get_ptz_session()
 
             # Set both channel title and timestamp
             for key in ["ChannelTitle.EncodeBlend", "TimeTitle.EncodeBlend"]:
-                r = requests.get(url, params={
+                r = session.get(url, params={
                     "action": "setConfig",
                     f"VideoWidget[0].{key}": val
-                }, auth=auth, timeout=5)
+                }, timeout=5)
                 if r.status_code != 200 or 'OK' not in r.text:
                     print(f"[{self.config.name}] Set {key}={val} failed")
                     return False
@@ -590,20 +585,13 @@ class EmpireTechPTZ(AxisCamera):
             Tuple of (azimuth, elevation, zoom) in degrees, or None on error.
             Azimuth: 0-360 degrees
             Elevation: -5 to 90 degrees (0 = horizontal, 90 = straight up)
-            Zoom: 1-25x optical zoom
+            Zoom: 1.0-14.4x optical zoom
         """
-        import requests
-        from requests.auth import HTTPDigestAuth
-
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
             params = {"action": "getStatus", "channel": 1}
 
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
-
-            response = requests.get(url, params=params, auth=auth, timeout=2)
+            response = self._get_ptz_session().get(url, params=params, timeout=2)
             if response.status_code != 200:
                 return None
 
@@ -615,7 +603,7 @@ class EmpireTechPTZ(AxisCamera):
                 elif 'Postion[1]=' in line:
                     el = float(line.split('=')[1])
                 elif 'ZoomValue=' in line:
-                    zoom = float(line.split('=')[1]) / 100.0  # Convert to 1-25x
+                    zoom = self.arg3_to_zoom_x(int(float(line.split('=')[1])))
 
             return (az, el, zoom)
 
@@ -629,18 +617,11 @@ class EmpireTechPTZ(AxisCamera):
         Returns:
             True if camera is in motion, False if idle
         """
-        import requests
-        from requests.auth import HTTPDigestAuth
-
         try:
             url = f"http://{self._get_ip()}/cgi-bin/ptz.cgi"
             params = {"action": "getStatus", "channel": 1}
 
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
-
-            response = requests.get(url, params=params, auth=auth, timeout=2)
+            response = self._get_ptz_session().get(url, params=params, timeout=2)
             if response.status_code != 200:
                 return False
 
@@ -658,7 +639,6 @@ class EmpireTechPTZ(AxisCamera):
         Returns:
             True if camera is idle, False if timeout
         """
-        import time
         start = time.time()
         was_moving = False
 
@@ -690,9 +670,6 @@ class EmpireTechPTZ(AxisCamera):
         Returns:
             True if command sent (and position reached if wait=True)
         """
-        import requests
-        from requests.auth import HTTPDigestAuth
-
         # Read current zoom so we can preserve it
         pos = self.get_position()
         current_arg3 = self.zoom_x_to_arg3(pos[2]) if pos else 0
@@ -708,11 +685,7 @@ class EmpireTechPTZ(AxisCamera):
                 "arg3": current_arg3,
             }
 
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
-
-            response = requests.get(url, params=params, auth=auth, timeout=5)
+            response = self._get_ptz_session().get(url, params=params, timeout=5)
             if response.status_code != 200:
                 return False
 
@@ -736,9 +709,6 @@ class EmpireTechPTZ(AxisCamera):
         Returns:
             True if command sent successfully
         """
-        import requests
-        from requests.auth import HTTPDigestAuth
-
         pos = self.get_position()
         if pos is None:
             print(f"[{self.config.name}] Cannot set zoom: failed to read position")
@@ -758,11 +728,7 @@ class EmpireTechPTZ(AxisCamera):
                 "arg3": zoom_arg3
             }
 
-            auth = None
-            if self.config.username:
-                auth = HTTPDigestAuth(self.config.username, self.config.password)
-
-            response = requests.get(url, params=params, auth=auth, timeout=5)
+            response = self._get_ptz_session().get(url, params=params, timeout=5)
             if response.status_code != 200:
                 return False
 
@@ -775,13 +741,8 @@ class EmpireTechPTZ(AxisCamera):
             return False
 
     def _get_ip(self) -> str:
-        """Extract IP from RTSP URL."""
-        url = self.config.rtsp_url
-        # Handle rtsp://user:pass@ip/... or rtsp://ip/...
-        if "@" in url:
-            return url.split("@")[1].split("/")[0].split(":")[0]
-        else:
-            return url.replace("rtsp://", "").split("/")[0].split(":")[0]
+        """Extract IP/hostname from RTSP URL."""
+        return urllib.parse.urlparse(self.config.rtsp_url).hostname
 
     def _get_ptz_code(self, pan: float, tilt: float, zoom: float) -> str:
         """Convert movement values to PTZ command code."""

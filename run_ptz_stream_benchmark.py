@@ -25,6 +25,7 @@ Before running:
 """
 
 import argparse
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -41,7 +42,7 @@ DEFAULT_MODEL = "models/ssd_mobilenet_v2_coco_quant_postprocess_edgetpu.tflite"
 DEFAULT_LABELS = "models/coco_labels.txt"
 DEFAULT_CAMERA_IP = "192.168.1.108"
 DEFAULT_CAMERA_USER = "admin"
-DEFAULT_CAMERA_PASS = "Admin123!"
+DEFAULT_CAMERA_PASS = os.environ.get("CAMERA_PASS", "")
 DEFAULT_DURATION = 60
 DEFAULT_WARMUP = 5
 
